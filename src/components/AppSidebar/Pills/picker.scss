@@ -1,0 +1,93 @@
+// SPDX-FileCopyrightText: 2026 ppardi <6176270+ppardi@users.noreply.github.com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Shared look of the task panel's pill pickers: a quiet menu, no outlines.
+
+.picker {
+	display: flex;
+	flex-direction: column;
+	min-width: 240px;
+	max-width: 320px;
+	padding: 6px;
+
+	&__option {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		min-height: 36px;
+		margin: 0;
+		padding: 0 10px;
+		border: none;
+		border-radius: var(--border-radius-large);
+		background: none;
+		color: var(--color-main-text);
+		font: inherit;
+		text-align: start;
+		cursor: pointer;
+
+		&:hover,
+		&:focus-visible {
+			background-color: var(--color-background-hover);
+		}
+
+		&--danger {
+			color: var(--color-text-error);
+		}
+	}
+
+	&__hint {
+		color: var(--color-text-maxcontrast);
+		font-size: .9em;
+		white-space: nowrap;
+	}
+
+	&__current {
+		padding: 6px 10px;
+		color: var(--color-text-maxcontrast);
+		font-size: .9em;
+	}
+
+	&__separator {
+		height: 1px;
+		margin: 6px 4px;
+		background-color: var(--color-border);
+	}
+
+	&__custom {
+		display: flex;
+		gap: 6px;
+		padding: 4px 6px;
+
+		input {
+			flex: 1;
+			min-width: 0;
+			margin: 0;
+			border: none !important;
+			border-radius: var(--border-radius);
+			background-color: var(--color-background-hover);
+			color: var(--color-main-text);
+			box-shadow: none !important;
+			color-scheme: light dark;
+		}
+	}
+
+	&__check {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-height: 36px;
+		padding: 0 10px;
+		border-radius: var(--border-radius-large);
+		cursor: pointer;
+
+		&:hover {
+			background-color: var(--color-background-hover);
+		}
+
+		input {
+			margin: 0;
+			accent-color: var(--color-primary-element);
+		}
+	}
+}

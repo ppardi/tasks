@@ -14,7 +14,8 @@ value, or unset its name in gray; clicking it opens its picker.
 			:shown="open === 'due'"
 			:triggers="[]"
 			popup-role="dialog"
-			@update:shown="shown => shown || close()">
+			@update:shown="shown => shown || close()"
+			@after-hide="mounted = open">
 			<template #trigger>
 				<PillButton class="pill--due"
 					:icon="CalendarBlankOutline"
@@ -28,7 +29,10 @@ value, or unset its name in gray; clicking it opens its picker.
 					@open="toggle('due')"
 					@clear="clearDue" />
 			</template>
-			<div class="picker" />
+			<DuePicker v-if="mounted === 'due'"
+				:task="task"
+				@due-changed="announce"
+				@done="close" />
 		</NcPopover>
 
 		<NcPopover v-for="reminder in reminders"
@@ -36,7 +40,8 @@ value, or unset its name in gray; clicking it opens its picker.
 			:shown="open === 'reminder-' + reminder.index"
 			:triggers="[]"
 			popup-role="dialog"
-			@update:shown="shown => shown || close()">
+			@update:shown="shown => shown || close()"
+			@after-hide="mounted = open">
 			<template #trigger>
 				<PillButton :icon="BellOutline"
 					:label="reminder.label"
@@ -48,28 +53,37 @@ value, or unset its name in gray; clicking it opens its picker.
 					@open="toggle('reminder-' + reminder.index)"
 					@clear="removeReminder(reminder.index)" />
 			</template>
-			<div class="picker" />
+			<ReminderPicker v-if="mounted === 'reminder-' + reminder.index"
+				:task="task"
+				:index="reminder.index"
+				@custom="custom('editReminders')"
+				@done="close" />
 		</NcPopover>
 
 		<NcPopover v-if="!readOnly"
 			:shown="open === 'reminder-new'"
 			:triggers="[]"
 			popup-role="dialog"
-			@update:shown="shown => shown || close()">
+			@update:shown="shown => shown || close()"
+			@after-hide="mounted = open">
 			<template #trigger>
 				<PillButton :icon="reminders.length ? Plus : BellOutline"
 					:label="t('tasks', 'Reminder')"
 					:aria-label="reminders.length ? t('tasks', 'Add another reminder') : t('tasks', 'Add a reminder')"
 					@open="toggle('reminder-new')" />
 			</template>
-			<div class="picker" />
+			<ReminderPicker v-if="mounted === 'reminder-new'"
+				:task="task"
+				@custom="custom('editReminders')"
+				@done="close" />
 		</NcPopover>
 
 		<NcPopover v-if="(task.due || task.start) && (!readOnly || task.isRecurring)"
 			:shown="open === 'repeat'"
 			:triggers="[]"
 			popup-role="dialog"
-			@update:shown="shown => shown || close()">
+			@update:shown="shown => shown || close()"
+			@after-hide="mounted = open">
 			<template #trigger>
 				<PillButton :icon="Repeat"
 					:label="repeatLabel || t('tasks', 'Repeat')"
@@ -80,7 +94,10 @@ value, or unset its name in gray; clicking it opens its picker.
 					@open="toggle('repeat')"
 					@clear="clearRepeat" />
 			</template>
-			<div class="picker" />
+			<RepeatPicker v-if="mounted === 'repeat'"
+				:task="task"
+				@custom="custom('editRepeat')"
+				@done="close" />
 		</NcPopover>
 
 		<NcPopover v-for="tag in task.tags"
@@ -88,7 +105,8 @@ value, or unset its name in gray; clicking it opens its picker.
 			:shown="open === 'tag-' + tag"
 			:triggers="[]"
 			popup-role="dialog"
-			@update:shown="shown => shown || close()">
+			@update:shown="shown => shown || close()"
+			@after-hide="mounted = open">
 			<template #trigger>
 				<PillButton :icon="TagOutline"
 					:label="tag"
@@ -100,32 +118,39 @@ value, or unset its name in gray; clicking it opens its picker.
 					@open="toggle('tag-' + tag)"
 					@clear="removeTag(tag)" />
 			</template>
-			<div class="picker" />
+			<TagsPicker v-if="mounted === 'tag-' + tag" :task="task" @done="close" />
 		</NcPopover>
 
 		<NcPopover v-if="!readOnly"
 			:shown="open === 'tag-new'"
 			:triggers="[]"
 			popup-role="dialog"
-			@update:shown="shown => shown || close()">
+			@update:shown="shown => shown || close()"
+			@after-hide="mounted = open">
 			<template #trigger>
 				<PillButton :icon="task.tags.length ? Plus : TagOutline"
 					:label="task.tags.length ? t('tasks', 'Tag') : t('tasks', 'Add tag')"
 					:aria-label="t('tasks', 'Add a tag')"
 					@open="toggle('tag-new')" />
 			</template>
-			<div class="picker" />
+			<TagsPicker v-if="mounted === 'tag-new'" :task="task" @done="close" />
 		</NcPopover>
 	</div>
 </template>
 
 <script>
+import DuePicker from './DuePicker.vue'
 import PillButton from './PillButton.vue'
+import ReminderPicker from './ReminderPicker.vue'
+import RepeatPicker from './RepeatPicker.vue'
+import TagsPicker from './TagsPicker.vue'
 import formatRecurrenceRule from '../../../filters/recurrenceRuleFormat.js'
-import { reminderLabel } from '../../../utils/reminders.js'
+import { fixedReminders, reminderLabel } from '../../../utils/reminders.js'
+import { repeatPreset, repeatPresets } from '../../../utils/repeatPresets.js'
 import { shortDateLabel } from '../../../utils/rowDate.js'
 
-import { translate as t, getCanonicalLocale } from '@nextcloud/l10n'
+import { showUndo } from '@nextcloud/dialogs'
+import { translate as t, translatePlural as n, getCanonicalLocale } from '@nextcloud/l10n'
 import NcPopover from '@nextcloud/vue/components/NcPopover'
 
 import BellOutline from 'vue-material-design-icons/BellOutline.vue'
@@ -139,8 +164,12 @@ import { markRaw } from 'vue'
 export default {
 	name: 'TaskPills',
 	components: {
+		DuePicker,
 		NcPopover,
 		PillButton,
+		ReminderPicker,
+		RepeatPicker,
+		TagsPicker,
 	},
 	props: {
 		task: {
@@ -152,10 +181,15 @@ export default {
 			default: false,
 		},
 	},
+	emits: ['editReminders', 'editRepeat'],
 	data() {
 		return {
 			// Which picker is open: 'due', 'reminder-<index>', 'reminder-new', 'repeat', 'tag-<tag>', 'tag-new'
 			open: null,
+			// Which picker's content is mounted. It stays until its popover has
+			// finished hiding: removing it first leaves the popover's focus trap
+			// with nothing to focus, which throws.
+			mounted: null,
 			BellOutline: markRaw(BellOutline),
 			CalendarBlankOutline: markRaw(CalendarBlankOutline),
 			Plus: markRaw(Plus),
@@ -191,7 +225,13 @@ export default {
 		},
 
 		repeatLabel() {
-			return this.task.isRecurring ? formatRecurrenceRule(this.task.recurrenceRule) : ''
+			if (!this.task.isRecurring) {
+				return ''
+			}
+			const preset = repeatPreset(this.task)
+			return preset
+				? repeatPresets().find(p => p.key === preset).label
+				: formatRecurrenceRule(this.task.recurrenceRule)
 		},
 	},
 	methods: {
@@ -202,15 +242,48 @@ export default {
 				return
 			}
 			this.open = this.open === which ? null : which
+			if (this.open) {
+				this.mounted = this.open
+			}
 		},
 
 		close() {
 			this.open = null
 		},
 
-		clearDue() {
+		/**
+		 * Closes the picker and asks the panel for the full editor.
+		 *
+		 * @param {string} event 'editReminders' or 'editRepeat'
+		 */
+		custom(event) {
 			this.close()
-			return this.$store.dispatch('setDue', { task: this.task, due: null, allDay: this.task.allDay })
+			this.$emit(event)
+		},
+
+		/**
+		 * Says what the automatic-reminder rule did on a due-date change, with Undo.
+		 *
+		 * @param {{added: Date|null, removed: Date[]}} result What setDue reported
+		 */
+		announce(result) {
+			if (!result || (!result.added && !result.removed?.length)) {
+				return
+			}
+			const undo = () => this.$store.dispatch('undoReminderChange', { task: this.task, ...result })
+			if (result.added) {
+				const minute = date => Math.floor(date.getTime() / 60000)
+				const added = fixedReminders(this.task.alarms).find(reminder => minute(reminder.at) === minute(result.added))
+				const when = added ? reminderLabel(this.task.alarms[added.index], this.task, { locale: getCanonicalLocale() }) : ''
+				showUndo(t('tasks', 'Reminder set: {when}', { when }), undo)
+			} else {
+				showUndo(n('tasks', 'Reminder removed', 'Reminders removed', result.removed.length), undo)
+			}
+		},
+
+		async clearDue() {
+			this.close()
+			this.announce(await this.$store.dispatch('setDue', { task: this.task, due: null, allDay: this.task.allDay }))
 		},
 
 		removeReminder(index) {

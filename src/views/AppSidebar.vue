@@ -125,7 +125,33 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 				<InformationOutline :size="20" />
 			</template>
 			<div>
-				<TaskPills :task="task" :read-only="readOnly" />
+				<NcModal v-if="showReminderEditor"
+					label-id="reminder-editor-title"
+					size="small"
+					@close="showReminderEditor = false">
+					<div class="reminder-editor">
+						<h2 id="reminder-editor-title">
+							{{ t('tasks', 'Reminders') }}
+						</h2>
+						<AlarmList :alarms="alarms"
+							:start-date="task.start"
+							:due-date="task.due"
+							:all-day="allDay"
+							:read-only="readOnly"
+							@add-alarm="addAlarmItem"
+							@update-alarm="updateAlarmItem"
+							@remove-alarm="removeAlarmItem"
+							@restore-date="restoreDate">
+							<template #icon>
+								<Bell :size="20" />
+							</template>
+						</AlarmList>
+					</div>
+				</NcModal>
+				<TaskPills :task="task"
+					:read-only="readOnly"
+					@edit-reminders="showReminderEditor = true"
+					@edit-repeat="$refs.recurrence.openEditor()" />
 				<div class="panel-card">
 					<CheckboxItem v-show="showAllDayToggle"
 						id="allDayToggle"
@@ -234,27 +260,6 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 						<Web :size="20" />
 					</template>
 				</TextItem>
-				<TagsItem v-show="!readOnly || task.tags.length > 0"
-					:options="tags"
-					:tags="task.tags"
-					:disabled="readOnly"
-					:placeholder="t('tasks', 'Select tags')"
-					icon="TagMultiple"
-					@add-tag="updateTag"
-					@set-tags="updateTags" />
-				<AlarmList :alarms="alarms"
-					:start-date="task.start"
-					:due-date="task.due"
-					:all-day="allDay"
-					:read-only="readOnly"
-					@add-alarm="addAlarmItem"
-					@update-alarm="updateAlarmItem"
-					@remove-alarm="removeAlarmItem"
-					@restore-date="restoreDate">
-					<template #icon>
-						<Bell :size="20" />
-					</template>
-				</AlarmList>
 			</div>
 		</NcAppSidebarTab>
 		<NcEmptyContent v-else :description="taskStatusLabel">
@@ -288,7 +293,6 @@ import CalendarPickerItem from '../components/AppSidebar/CalendarPickerItem.vue'
 import MultiselectItem from '../components/AppSidebar/MultiselectItem.vue'
 import RecurrenceItem from '../components/AppSidebar/RecurrenceItem.vue'
 import SliderItem from '../components/AppSidebar/SliderItem.vue'
-import TagsItem from '../components/AppSidebar/TagsItem.vue'
 import TextItem from '../components/AppSidebar/TextItem.vue'
 import NotesItem from '../components/AppSidebar/NotesItem.vue'
 import TaskCheckbox from '../components/TaskCheckbox.vue'
@@ -306,6 +310,7 @@ import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
+import NcModal from '@nextcloud/vue/components/NcModal'
 import { generateUrl } from '@nextcloud/router'
 
 import Bell from 'vue-material-design-icons/BellOutline.vue'
@@ -333,6 +338,7 @@ import { mapGetters, mapActions } from 'vuex'
 export default {
 	components: {
 		TaskPills,
+		NcModal,
 		NcAppSidebar,
 		NcAppSidebarTab,
 		NcActionButton,
@@ -364,7 +370,6 @@ export default {
 		NcEmptyContent,
 		MultiselectItem,
 		SliderItem,
-		TagsItem,
 		TextItem,
 		CalendarPickerItem,
 		NotesItem,
@@ -389,6 +394,8 @@ export default {
 	},
 	data() {
 		return {
+			// The full reminder editor, opened from a reminder pill's Custom…
+			showReminderEditor: false,
 			editingSummary: false,
 			editingStart: false,
 			editingDue: false,
@@ -885,24 +892,6 @@ export default {
 		},
 
 		/**
-		 * Sets the tags of a task
-		 *
-		 * @param {Array} tags The new tags
-		 */
-		updateTags(tags) {
-			this.setTags({ task: this.task, tags })
-		},
-
-		/**
-		 * Adds a tag to the list of tags
-		 *
-		 * @param {string} tag The name of the tag to add
-		 */
-		updateTag(tag) {
-			this.addTag({ task: this.task, tag })
-		},
-
-		/**
 		 * Adds an alarm to the task
 		 *
 		 * @param {object} alarm The alarm to add
@@ -1024,6 +1013,14 @@ export default {
 
 	> * + * {
 		border-top: 1px solid var(--color-border);
+	}
+}
+
+.reminder-editor {
+	padding: 20px;
+
+	h2 {
+		margin-top: 0;
 	}
 }
 
