@@ -12,6 +12,7 @@
 
 import { translate as t } from '@nextcloud/l10n'
 import ICAL from 'ical.js'
+import { toRaw } from 'vue'
 
 import { mapICALAlarmsToAlarmObjects } from '../models/alarm.js'
 import { formatAlarm } from './dateStrings.js'
@@ -75,7 +76,9 @@ export function fixedReminders(alarms) {
 	return (alarms || [])
 		.map((alarm, index) => ({ index, trigger: alarm.getFirstPropertyValue('trigger') }))
 		.filter(({ trigger }) => trigger instanceof ICAL.Time)
-		.map(({ index, trigger }) => ({ index, at: trigger.toJSDate() }))
+		// toRaw: in the reactive store the UTC zone comes back as a Proxy, which
+		// ical.js no longer recognises as UTC, and toJSDate() then throws
+		.map(({ index, trigger }) => ({ index, at: toRaw(trigger).toJSDate() }))
 }
 
 /**
@@ -126,7 +129,7 @@ export function reminderChoices(due, allDay) {
 export function reminderLabel(alarm, task, { now = new Date(), locale } = {}) {
 	const trigger = alarm.getFirstPropertyValue('trigger')
 	if (trigger instanceof ICAL.Time) {
-		const at = trigger.toJSDate()
+		const at = toRaw(trigger).toJSDate()
 		const due = task.dueMoment?.isValid() ? task.dueMoment.toDate() : null
 		const match = reminderChoices(due, task.allDay)
 			.find(choice => Math.floor(choice.at.getTime() / MINUTE) === Math.floor(at.getTime() / MINUTE))

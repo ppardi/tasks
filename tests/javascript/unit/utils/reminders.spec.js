@@ -14,6 +14,7 @@ import {
 
 import ICAL from 'ical.js'
 import { describe, expect, it } from 'vitest'
+import { reactive } from 'vue'
 
 // Local times throughout, so the suite passes in any time zone.
 // Wednesday, 21 October 2026, 2:30 PM.
@@ -71,6 +72,14 @@ describe('utils/reminders fixedReminders and fixedTrigger', () => {
 		const at = new Date(2026, 9, 22, 8, 0)
 		const list = fixedReminders([relativeAlarm('-PT15M'), fixedAlarm(at)])
 		expect(list).toEqual([{ index: 1, at }])
+	})
+
+	it('reads reminders held in the reactive store, where the UTC zone comes back wrapped', () => {
+		// In the app the task is reactive, so the trigger's zone is a Proxy of
+		// ICAL's UTC singleton and ical.js no longer recognises it as UTC.
+		const at = new Date(2026, 9, 22, 8, 0)
+		const [alarm] = reactive([fixedAlarm(at)])
+		expect(fixedReminders([alarm])).toEqual([{ index: 0, at }])
 	})
 
 	it('builds a UTC trigger for the given moment', () => {

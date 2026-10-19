@@ -12,6 +12,7 @@
 
 import { translate as t, getCanonicalLocale } from '@nextcloud/l10n'
 import ICAL from 'ical.js'
+import { toRaw } from 'vue'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -79,7 +80,9 @@ export function reminderDate(alarms, now) {
 	const dates = (alarms || [])
 		.map(alarm => alarm.getFirstPropertyValue('trigger'))
 		.filter(trigger => trigger instanceof ICAL.Time)
-		.map(trigger => trigger.toJSDate())
+		// toRaw: in the reactive store the UTC zone comes back as a Proxy, which
+		// ical.js no longer recognises as UTC, and toJSDate() then throws
+		.map(trigger => toRaw(trigger).toJSDate())
 		.sort((a, b) => a - b)
 	if (!dates.length) {
 		return null

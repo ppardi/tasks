@@ -7,6 +7,7 @@ import { rowDate, reminderDate, shortDateLabel } from '../../../../src/utils/row
 
 import ICAL from 'ical.js'
 import { describe, expect, it } from 'vitest'
+import { reactive } from 'vue'
 
 // Local times, so the suite passes in any time zone.
 // Wednesday, 21 October 2026, 2:30 PM.
@@ -88,6 +89,11 @@ describe('utils/rowDate reminderDate', () => {
 		const soon = new Date(2026, 9, 23, 9, 0)
 		const later = new Date(2026, 10, 1, 9, 0)
 		expect(reminderDate([absoluteAlarm(later), absoluteAlarm(past), absoluteAlarm(soon)], now)).toEqual(soon)
+	})
+
+	it('reads reminders held in the reactive store', () => {
+		const date = new Date(2026, 9, 23, 9, 0)
+		expect(reminderDate(reactive([absoluteAlarm(date)]), now)).toEqual(date)
 	})
 
 	it('falls back to the most recent past reminder', () => {
