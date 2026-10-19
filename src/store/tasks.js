@@ -1297,10 +1297,18 @@ const actions = {
 	/**
 	 * Sets the percent complete property of a task
 	 *
+	 * Completing a task completes its open subtasks, and completing the last
+	 * open subtask of a parent completes the parent, all the way up.
+	 * Reopening a task reopens its closed parent.
+	 *
 	 * @param {object} context The store context
-	 * @param {Task} task The task to update
+	 * @param {object} data Destructuring object
+	 * @param {Task} data.task The task to update
+	 * @param {number} data.complete The percentage
+	 * @param {boolean} [data.fromParent] Set when a parent completes its subtasks, so they
+	 *   do not in turn try to complete the parent that is already completing
 	 */
-	async setPercentComplete(context, { task, complete }) {
+	async setPercentComplete(context, { task, complete, fromParent = false }) {
 		if (complete === task.complete) {
 			return
 		}
@@ -1314,7 +1322,7 @@ const actions = {
 			// complete all sub tasks
 			await Promise.all(Object.values(task.subTasks).map(async (subTask) => {
 				if (!subTask.closed) {
-					await context.dispatch('setPercentComplete', { task: subTask, complete: 100 })
+					await context.dispatch('setPercentComplete', { task: subTask, complete: 100, fromParent: true })
 				}
 			}))
 
@@ -1332,6 +1340,15 @@ const actions = {
 		}
 		context.commit('setComplete', { task, complete })
 		context.dispatch('updateTask', task)
+
+		// The last open subtask closing completes its parent
+		if (complete === 100 && !fromParent) {
+			const parent = context.getters.getParentTask(task)
+			if (parent && !parent.closed
+				&& Object.values(parent.subTasks).every(subTask => subTask.closed)) {
+				await context.dispatch('setPercentComplete', { task: parent, complete: 100 })
+			}
+		}
 	},
 
 	/**
