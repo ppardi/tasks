@@ -51,6 +51,7 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 				</template>
 			</NcTextField>
 		</div>
+		<FilterBar />
 		<CreateMultipleTasksDialog v-if="showCreateMultipleTasksModal"
 			:calendar="calendar"
 			:tasks-to-create="multipleTasks"
@@ -61,6 +62,7 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 </template>
 
 <script>
+import FilterBar from './FilterBar.vue'
 import FilterDropdown from './FilterDropdown.vue'
 import SortorderDropdown from './SortorderDropdown.vue'
 import openNewTask from '../mixins/openNewTask.js'
@@ -80,6 +82,7 @@ export default {
 	components: {
 		CreateMultipleTasksDialog,
 		NcTextField,
+		FilterBar,
 		FilterDropdown,
 		SortorderDropdown,
 		Plus,
