@@ -24,6 +24,9 @@
         <nextcloud min-version="31" max-version="35"/>
         <backend>caldav</backend>
     </dependencies>
+    <background-jobs>
+        <job>OCA\Tasks\BackgroundJob\RolloverJob</job>
+    </background-jobs>
     <navigations>
         <navigation>
             <id>tasks</id>
