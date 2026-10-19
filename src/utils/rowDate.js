@@ -13,6 +13,7 @@
 import { translate as t, translatePlural as n, getCanonicalLocale } from '@nextcloud/l10n'
 import ICAL from 'ical.js'
 import { toRaw } from 'vue'
+import { repeatPreset } from './repeatPresets.js'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -91,6 +92,63 @@ export function reminderDate(alarms, now) {
 }
 
 /**
+ * How a repeating task's run of missed occurrences reads: in days, weeks,
+ * months or years when it repeats exactly once per one of them, else in times.
+ * The unit comes from repeatPreset, so only the plain Daily, Weekly, Monthly
+ * and Yearly rules get one; every other rule (weekdays, every 2 weeks, a COUNT
+ * or UNTIL, two RRULEs) falls back to times, which is true of any rule.
+ *
+ * Each sentence is a whole literal, singular and plural alike, so translators
+ * see every one. One miss is checked before n() rather than left to its
+ * singular form, which some languages also use for 21, 31 and so on.
+ *
+ * @param {object} task The task
+ * @return {string} e.g. "missed 2 weeks in a row", "missed yesterday"
+ */
+function missedText(task) {
+	const count = task.missedCount
+	const preset = task.hasMultipleRRules ? null : repeatPreset(task)
+	switch (preset) {
+	case 'daily':
+		return count === 1
+			? t('tasks', 'missed yesterday')
+			: n('tasks', 'missed %n day in a row', 'missed %n days in a row', count)
+	case 'weekly':
+		return count === 1
+			? t('tasks', 'missed last week')
+			: n('tasks', 'missed %n week in a row', 'missed %n weeks in a row', count)
+	case 'monthly':
+		return count === 1
+			? t('tasks', 'missed last month')
+			: n('tasks', 'missed %n month in a row', 'missed %n months in a row', count)
+	case 'yearly':
+		return count === 1
+			? t('tasks', 'missed last year')
+			: n('tasks', 'missed %n year in a row', 'missed %n years in a row', count)
+	default:
+		return count === 1
+			? t('tasks', 'missed last time')
+			: n('tasks', 'missed %n time in a row', 'missed %n times in a row', count)
+	}
+}
+
+/**
+ * @param {string} title The date's hover text
+ * @param {object} task The task
+ * @param {string|null} late What lateText returned
+ * @return {string} The hover text, with a line spelling out a run of misses
+ */
+function withMissedLine(title, task, late) {
+	if (!late || !(task.missedCount > 0)) {
+		return title
+	}
+	const line = task.missedCount === 1
+		? t('tasks', 'Not completed the last time it came due')
+		: n('tasks', 'Not completed the last %n time it came due', 'Not completed the last %n times it came due', task.missedCount)
+	return `${title}\n${line}`
+}
+
+/**
  * What the nightly rollover adds after the date: occurrences a repeating task
  * missed, else whole days since the original date.
  *
@@ -107,7 +165,7 @@ function lateText(task, original, shown, now) {
 		return null
 	}
 	if (task.missedCount > 0) {
-		return t('tasks', 'missed previously: {count}', { count: task.missedCount })
+		return missedText(task)
 	}
 	if (!original) {
 		return null
@@ -144,21 +202,23 @@ export function rowDate(task, { now = new Date(), locale = getCanonicalLocale() 
 	if (task.dueMoment?.isValid()) {
 		const date = task.dueMoment.toDate()
 		const timed = !task.allDay
+		const late = lateText(task, task.originalDue ?? null, date, now)
 		return {
 			text: shortDateLabel(date, timed, now, locale),
-			title: t('tasks', 'Due {date}', { date: full(date, timed) }),
+			title: withMissedLine(t('tasks', 'Due {date}', { date: full(date, timed) }), task, late),
 			overdue: timed ? date < now : startOfDay(date) < startOfDay(now),
-			late: lateText(task, task.originalDue ?? null, date, now),
+			late,
 		}
 	}
 
 	const date = reminderDate(task.alarms, now)
 	if (date) {
+		const late = lateText(task, task.originalReminder ?? null, date, now)
 		return {
 			text: shortDateLabel(date, true, now, locale),
-			title: t('tasks', 'Reminder {date}', { date: full(date, true) }),
+			title: withMissedLine(t('tasks', 'Reminder {date}', { date: full(date, true) }), task, late),
 			overdue: date < now,
-			late: lateText(task, task.originalReminder ?? null, date, now),
+			late,
 		}
 	}
 

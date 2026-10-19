@@ -15,7 +15,14 @@ const now = new Date(2026, 9, 21, 14, 30)
 const locale = 'en-US'
 const opts = { now, locale }
 
-const momentOf = date => ({ isValid: () => date !== null, toDate: () => date })
+const momentOf = date => ({
+	isValid: () => date !== null,
+	toDate: () => date,
+	// What repeatPreset reads from a moment
+	day: () => date.getDay(),
+	date: () => date.getDate(),
+	month: () => date.getMonth(),
+})
 const noDate = momentOf(null)
 
 const task = (props = {}) => ({
@@ -161,9 +168,46 @@ describe('utils/rowDate rowDate - rollover', () => {
 		expect(result.late).toBe('2 days late')
 	})
 
-	it('says how many occurrences a repeating task missed', () => {
-		const result = rowDate(task({ dueMoment: momentOf(new Date(2026, 9, 19, 9, 0)), missedCount: 2 }), opts)
-		expect(result.late).toBe('missed previously: 2')
+	// Monday, 19 October 2026, 9:00 AM: the occurrence the job jumped to
+	const repeating = (rule, missedCount, props = {}) => task({
+		dueMoment: momentOf(new Date(2026, 9, 19, 9, 0)),
+		isRecurring: true,
+		hasMultipleRRules: false,
+		recurrenceRule: { frequency: 'NONE', interval: 1, count: null, until: null, byDay: [], byMonth: [], byMonthDay: [], bySetPosition: null, ...rule },
+		missedCount,
+		...props,
+	})
+	const missed = (rule, count, props) => rowDate(repeating(rule, count, props), opts).late
+
+	it('counts the misses in the unit the task repeats by', () => {
+		expect(missed({ frequency: 'DAILY' }, 2)).toBe('missed 2 days in a row')
+		expect(missed({ frequency: 'WEEKLY', byDay: ['MO'] }, 2)).toBe('missed 2 weeks in a row')
+		expect(missed({ frequency: 'MONTHLY', byMonthDay: [19] }, 3)).toBe('missed 3 months in a row')
+		expect(missed({ frequency: 'YEARLY', byMonth: [10], byMonthDay: [19] }, 2)).toBe('missed 2 years in a row')
+	})
+
+	it('names a single miss in plain words', () => {
+		expect(missed({ frequency: 'DAILY' }, 1)).toBe('missed yesterday')
+		expect(missed({ frequency: 'WEEKLY' }, 1)).toBe('missed last week')
+		expect(missed({ frequency: 'MONTHLY' }, 1)).toBe('missed last month')
+		expect(missed({ frequency: 'YEARLY' }, 1)).toBe('missed last year')
+	})
+
+	it('counts times for a task that does not repeat once per day, week, month or year', () => {
+		expect(missed({ frequency: 'WEEKLY', byDay: ['MO', 'TU', 'WE', 'TH', 'FR'] }, 3)).toBe('missed 3 times in a row')
+		expect(missed({ frequency: 'WEEKLY', interval: 2 }, 2)).toBe('missed 2 times in a row')
+		expect(missed({ frequency: 'WEEKLY', byDay: ['MO', 'TH'] }, 2)).toBe('missed 2 times in a row')
+		expect(missed({ frequency: 'MONTHLY', byDay: ['MO'], bySetPosition: -1 }, 2)).toBe('missed 2 times in a row')
+		expect(missed({ frequency: 'HOURLY' }, 4)).toBe('missed 4 times in a row')
+		expect(missed({ frequency: 'DAILY' }, 2, { hasMultipleRRules: true })).toBe('missed 2 times in a row')
+		expect(missed({ frequency: 'WEEKLY', interval: 2 }, 1)).toBe('missed last time')
+	})
+
+	it('spells the count out on hover', () => {
+		const two = rowDate(repeating({ frequency: 'WEEKLY' }, 2), opts)
+		expect(two.title).toBe('Due Monday, October 19, 2026 at 9:00 AM\nNot completed the last 2 times it came due')
+		const one = rowDate(repeating({ frequency: 'WEEKLY' }, 1), opts)
+		expect(one.title).toBe('Due Monday, October 19, 2026 at 9:00 AM\nNot completed the last time it came due')
 	})
 
 	it('says nothing more for a task that never rolled', () => {
