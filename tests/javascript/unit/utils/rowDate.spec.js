@@ -163,7 +163,7 @@ describe('utils/rowDate rowDate - rollover', () => {
 
 	it('says how many occurrences a repeating task missed', () => {
 		const result = rowDate(task({ dueMoment: momentOf(new Date(2026, 9, 19, 9, 0)), missedCount: 2 }), opts)
-		expect(result.late).toBe('missed 2')
+		expect(result.late).toBe('missed previously: 2')
 	})
 
 	it('says nothing more for a task that never rolled', () => {

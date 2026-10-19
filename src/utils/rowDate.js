@@ -107,7 +107,7 @@ function lateText(task, original, shown, now) {
 		return null
 	}
 	if (task.missedCount > 0) {
-		return t('tasks', 'missed {count}', { count: task.missedCount })
+		return t('tasks', 'missed previously: {count}', { count: task.missedCount })
 	}
 	if (!original) {
 		return null

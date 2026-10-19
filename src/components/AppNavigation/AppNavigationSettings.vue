@@ -158,13 +158,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.rollover__hint {
-	margin: 0 0 8px 44px;
-	color: var(--color-text-maxcontrast);
-	font-size: .9em;
-	line-height: 1.3;
-}
-
 li {
 	display: flex;
 	align-items: center;
@@ -172,6 +165,27 @@ li {
 
 	&.headline {
 		font-weight: bold;
+	}
+
+	// The switch with its explanation underneath: stacked, as tall as it needs
+	&.rollover {
+		flex-direction: column;
+		align-items: flex-start;
+		height: auto;
+		margin: 8px 0 12px;
+
+		label {
+			white-space: normal;
+		}
+	}
+
+	.rollover__hint {
+		margin: 0;
+		// Lines up with the switch's label, not the switch itself
+		padding-inline-start: 50px;
+		color: var(--color-text-maxcontrast);
+		font-size: .9em;
+		line-height: 1.35;
 	}
 
 	&.collection {
