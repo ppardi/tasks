@@ -36,6 +36,78 @@ import moment from '@nextcloud/moment'
 
 import ICAL from 'ical.js'
 import { randomUUID } from '../utils/crypto.js'
+import { automaticReminderTime, fixedReminders, fixedTrigger, isAutomaticReminder } from '../utils/reminders.js'
+
+/**
+ * @param {Date} at The moment to remind
+ * @return {object} The VALARM data the automatic-reminder rule writes
+ */
+function automaticAlarm(at) {
+	return {
+		action: 'DISPLAY',
+		// When the action is "DISPLAY", the alarm MUST also include a "DESCRIPTION" property
+		description: t('tasks', 'This is a todo reminder.'),
+		trigger: fixedTrigger(at),
+	}
+}
+
+/**
+ * @param {Task} task The task
+ * @return {Date|null} Its due date
+ */
+function dueOf(task) {
+	return task.dueMoment.isValid() ? task.dueMoment.toDate() : null
+}
+
+/**
+ * Keeps the automatic reminder in step with the due date
+ * (docs/TASK-PANEL-DESIGN.md, "Automatic reminder rules"). Call it after the
+ * due date changed, with what it was before.
+ *
+ * - no due date before, one now, no reminders: add one, unless already past;
+ * - due date moved: move the automatic reminder with it;
+ * - due date cleared: remove the automatic reminder.
+ * Other reminders are never touched.
+ *
+ * @param {object} context The store context
+ * @param {Task} task The task, already changed
+ * @param {object} before Destructuring object
+ * @param {Date|null} before.oldDue The due date before the change
+ * @param {boolean} before.oldAllDay Whether it was all-day
+ * @return {{added: Date|null, removed: Date[]}} What the rule did, so it can be undone
+ */
+function applyReminderRule(context, task, { oldDue, oldAllDay }) {
+	const result = { added: null, removed: [] }
+	if (task.calendar.readOnly || (task.calendar.isSharedWithMe && task.class !== 'PUBLIC')) {
+		return result
+	}
+	const newDue = dueOf(task)
+	const automatic = oldDue
+		? fixedReminders(task.alarms).filter(reminder => isAutomaticReminder(reminder.at, oldDue, oldAllDay))
+		: []
+
+	if (!newDue) {
+		if (automatic.length) {
+			context.commit('removeAlarm', { task, indexes: automatic.map(reminder => reminder.index) })
+			result.removed = automatic.map(reminder => reminder.at)
+		}
+		return result
+	}
+
+	const at = automaticReminderTime(newDue, task.allDay)
+	if (!oldDue) {
+		if (task.alarms.length === 0 && at > new Date()) {
+			context.commit('addAlarm', { task, alarm: automaticAlarm(at) })
+			result.added = at
+		}
+		return result
+	}
+
+	automatic
+		.filter(reminder => reminder.at.getTime() !== at.getTime())
+		.forEach(reminder => context.commit('updateAlarm', { task, alarm: automaticAlarm(at), index: reminder.index }))
+	return result
+}
 
 /**
  * How long a just-completed task stays in the open list before it moves to the
@@ -930,6 +1002,9 @@ const actions = {
 		if (taskData.allDay) {
 			task.allDay = taskData.allDay
 		}
+		if (task.due) {
+			applyReminderRule(context, task, { oldDue: null, oldAllDay: task.allDay })
+		}
 		if (taskData.related) {
 			task.related = taskData.related
 			// Check that parent task is not completed, uncomplete if necessary.
@@ -1598,8 +1673,36 @@ const actions = {
 	 * @param {Task} task The task to update
 	 */
 	async setDue(context, { task, due, allDay }) {
+		const before = { oldDue: dueOf(task), oldAllDay: task.allDay }
 		context.commit('setDue', { task, due, allDay })
+		const result = applyReminderRule(context, task, before)
 		context.dispatch('updateTask', task)
+		return result
+	},
+
+	/**
+	 * Undoes what the automatic-reminder rule did on a due-date change:
+	 * removes the reminder it added (found by its time, not its position) and
+	 * puts back those it removed.
+	 *
+	 * @param {object} context The store context
+	 * @param {object} data Destructuring object
+	 * @param {Task} data.task The task
+	 * @param {Date|null} data.added The reminder the rule added
+	 * @param {Date[]} data.removed The reminders the rule removed
+	 */
+	async undoReminderChange(context, { task, added, removed = [] }) {
+		if (added) {
+			const minute = date => Math.floor(date.getTime() / 60000)
+			const match = fixedReminders(task.alarms).find(reminder => minute(reminder.at) === minute(added))
+			if (match) {
+				context.commit('removeAlarm', { task, indexes: [match.index] })
+			}
+		}
+		removed.forEach(at => context.commit('addAlarm', { task, alarm: automaticAlarm(at) }))
+		if (added || removed.length) {
+			context.dispatch('updateTask', task)
+		}
 	},
 
 	/**
@@ -1678,7 +1781,18 @@ const actions = {
 		if (task.calendar.isSharedWithMe && task.class !== 'PUBLIC') {
 			return
 		}
+		const before = { oldDue: dueOf(task), oldAllDay: task.allDay }
 		context.commit('toggleAllDay', task)
+		if (!task.allDay) {
+			// A date that gains a time gets 9:00 AM, not midnight
+			if (task.startMoment.isValid()) {
+				context.commit('setStart', { task, start: task.startMoment.hour(9).minute(0).second(0), allDay: false })
+			}
+			if (task.dueMoment.isValid()) {
+				context.commit('setDue', { task, due: task.dueMoment.hour(9).minute(0).second(0), allDay: false })
+			}
+		}
+		applyReminderRule(context, task, before)
 		if (+context.rootState.settings.settings.allDay !== +task.allDay) {
 			context.dispatch('setSetting', { type: 'allDay', value: +task.allDay })
 		}
@@ -1995,6 +2109,7 @@ const actions = {
 				}
 
 				// Update the appropriate date field
+				const beforeNext = { oldDue: dueOf(freshTask), oldAllDay: freshTask.allDay }
 				if (freshTask.due) {
 					context.commit('setDue', {
 						task: freshTask,
@@ -2019,6 +2134,8 @@ const actions = {
 						allDay: freshTask.allDay,
 					})
 				}
+				// The automatic reminder follows the due date to the next occurrence
+				applyReminderRule(context, freshTask, beforeNext)
 
 				// Reset completion status on master task
 				freshTask.setComplete(0)
