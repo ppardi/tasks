@@ -29,7 +29,7 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 			:disabled="readOnly"
 			:aria-label="ariaLabel"
 			@click="toggleCompleted()">
-		<label :class="[priorityClass]" :for="checkboxId">
+		<label :for="checkboxId">
 			<CheckboxBlankOffOutline v-if="cancelled && !completed" :size="22" />
 			<CheckboxOutline v-else-if="completed" :size="22" />
 			<CheckboxBlank v-else-if="readOnly" :size="22" />
@@ -66,10 +66,6 @@ export default {
 			type: Boolean,
 			required: true,
 		},
-		priorityClass: {
-			type: String,
-			default: '',
-		},
 	},
 	emits: ['toggleCompleted'],
 	computed: {
@@ -104,10 +100,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-$red_overdue: #b3312d; // overdue dates and high importance
-$yellow: #fd0; // medium importance
-$blue_due: #4271a6; // due dates and low importance
-
+// The checkbox stays one neutral color; priority shows on the star only.
 .task-checkbox {
 	display: flex;
 	height: var(--default-clickable-area);
@@ -142,20 +135,6 @@ $blue_due: #4271a6; // due dates and low importance
 
 			&:hover {
 				color: var(--color-main-text);
-			}
-
-			&.priority {
-				&--high {
-					color: $red_overdue;
-				}
-
-				&--medium {
-					color: $yellow;
-				}
-
-				&--low {
-					color: $blue_due;
-				}
 			}
 		}
 	}

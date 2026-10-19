@@ -153,7 +153,6 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 			<TaskCheckbox :completed="task.completed"
 				:cancelled="task.status === 'CANCELLED'"
 				:read-only="readOnly"
-				:priority-class="priorityClass"
 				@toggle-completed="toggleCompleted(task)" />
 		</template>
 
@@ -685,18 +684,6 @@ export default {
 				return t('tasks', 'Priority {priority}: high', { priority: this.task.priority })
 			}
 			return t('tasks', 'No priority assigned')
-		},
-		priorityClass() {
-			if (+this.task.priority > 5) {
-				return 'priority--low'
-			}
-			if (+this.task.priority === 5) {
-				return 'priority--medium'
-			}
-			if (+this.task.priority > 0) {
-				return 'priority--high'
-			}
-			return null
 		},
 		completeString() {
 			return t('tasks', '{percent} % completed', { percent: this.task.complete })

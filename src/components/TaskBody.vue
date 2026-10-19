@@ -44,7 +44,6 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 				class="no-nav"
 				:cancelled="task.status === 'CANCELLED'"
 				:read-only="readOnly"
-				:priority-class="priorityClass"
 				@toggle-completed="toggleCompleted(task)" />
 			<!-- Info: summary, progress & tags -->
 			<div class="task-body__info"
