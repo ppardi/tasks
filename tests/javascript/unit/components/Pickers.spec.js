@@ -78,6 +78,14 @@ describe('DuePicker.vue', () => {
 		expect(dispatched[0].payload.due.toDate()).toEqual(at(26, 9))
 	})
 
+	it('gives a task with an all-day start an all-day due date, so the two match', async () => {
+		const task = makeTask(['DTSTART;VALUE=DATE:20261021'])
+		const { wrapper, dispatched } = mountPicker(DuePicker, { task })
+		await clickOption(wrapper, 'Tomorrow')
+		expect(dispatched[0].payload.allDay).toBe(true)
+		expect(dispatched[0].payload.due.toDate()).toEqual(at(22))
+	})
+
 	it('reports what the reminder rule did, so the panel can offer Undo', async () => {
 		const { wrapper } = mountPicker(DuePicker, { task: makeTask() })
 		await clickOption(wrapper, 'Today')

@@ -150,14 +150,41 @@ describe('store/tasks - automatic reminder', () => {
 		expect(task.alarms).toHaveLength(0)
 	})
 
-	it('undo takes away the automatic reminder by its time, leaving one added since', async () => {
+	it('undo goes by time, so it never removes a reminder the user put in its place', async () => {
 		const task = makeTask()
 		const context = makeContext(task)
 		const result = await actions.setDue(context, { task, due: moment(at(23, 16)), allDay: false })
+		// The user removes the automatic reminder and adds their own, which now sits at index 0
+		mutations.removeAlarm(context.state, { task, indexes: [0] })
 		mutations.addAlarm(context.state, { task, alarm: { action: 'DISPLAY', description: 'Reminder', trigger: fixedTrigger(at(20, 8)) } })
-		// The user's reminder is now first, so an index-based undo would remove the wrong one
 		await actions.undoReminderChange(context, { task, ...result })
 		expect(reminderTimes(task)).toEqual([at(20, 8)])
+	})
+
+	it('writes nothing to a list shared with the user when the task is not public', async () => {
+		const task = makeTask(['CLASS:PRIVATE'], { isSharedWithMe: true })
+		await actions.setDue(makeContext(task), { task, due: moment(at(23, 16)), allDay: false })
+		expect(task.alarms).toHaveLength(0)
+	})
+
+	it('moves the automatic reminder when the task is dragged to another day', async () => {
+		const task = makeTask([`DUE:${ical(at(23, 16))}`, ...fixedAlarmLines(at(23, 16))])
+		await actions.setDate(makeContext(task), { task, day: 4 })
+		expect(task.dueMoment.toDate()).toEqual(at(25, 16))
+		expect(reminderTimes(task)).toEqual([at(25, 16)])
+	})
+
+	it('moves the automatic reminder when a later start date pushes the due date', async () => {
+		const task = makeTask([`DTSTART:${ical(at(22, 16))}`, `DUE:${ical(at(23, 16))}`, ...fixedAlarmLines(at(23, 16))])
+		await actions.setStart(makeContext(task), { task, start: moment(at(25, 16)), allDay: false })
+		expect(task.dueMoment.toDate()).toEqual(at(26, 16))
+		expect(reminderTimes(task)).toEqual([at(26, 16)])
+	})
+
+	it('carries every fixed reminder of a repeating task to the next occurrence', async () => {
+		const task = makeTask([`DUE:${ical(at(23, 16))}`, 'RRULE:FREQ=DAILY', ...fixedAlarmLines(at(23, 15))])
+		await actions.handleRecurringTaskCompletion(makeContext(task), { task })
+		expect(reminderTimes(task)).toEqual([at(24, 15)])
 	})
 
 	it('undo puts back a reminder removed with the due date', async () => {

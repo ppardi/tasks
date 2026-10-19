@@ -71,9 +71,10 @@ export default {
 			return this.task.dueMoment.isValid()
 		},
 
-		// A task without a due date gets a timed one; an all-day one stays all-day
+		// A due date takes the type of the task's dates (DUE and DTSTART must match);
+		// a task with no dates at all gets a timed one
 		allDay() {
-			return this.hasDue && this.task.allDay
+			return (this.hasDue || this.task.startMoment.isValid()) && this.task.allDay
 		},
 
 		// The time the quick choices keep: the current due time, else 9:00 AM

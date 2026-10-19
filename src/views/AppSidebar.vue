@@ -148,6 +148,19 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 						</AlarmList>
 					</div>
 				</NcModal>
+				<!-- Not shown, always mounted: upstream's AlarmList watches the dates and
+					asks whether to keep reminders measured from a date that is cleared -->
+				<AlarmList v-if="!showReminderEditor"
+					v-show="false"
+					:alarms="alarms"
+					:start-date="task.start"
+					:due-date="task.due"
+					:all-day="allDay"
+					:read-only="readOnly"
+					@add-alarm="addAlarmItem"
+					@update-alarm="updateAlarmItem"
+					@remove-alarm="removeAlarmItem"
+					@restore-date="restoreDate" />
 				<TaskPills :task="task"
 					:read-only="readOnly"
 					@edit-reminders="showReminderEditor = true"

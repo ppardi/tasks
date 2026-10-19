@@ -110,6 +110,27 @@ function applyReminderRule(context, task, { oldDue, oldAllDay }) {
 }
 
 /**
+ * Moves every fixed-time reminder by as much as the due date moved, for a
+ * repeating task advancing to its next occurrence.
+ *
+ * @param {object} context The store context
+ * @param {Task} task The task, already moved
+ * @param {Date|null} oldDue The due date before the move
+ */
+function shiftFixedReminders(context, task, oldDue) {
+	const newDue = dueOf(task)
+	if (!oldDue || !newDue || task.calendar.readOnly) {
+		return
+	}
+	const shift = newDue.getTime() - oldDue.getTime()
+	fixedReminders(task.alarms).forEach(reminder => context.commit('updateAlarm', {
+		task,
+		alarm: automaticAlarm(new Date(reminder.at.getTime() + shift)),
+		index: reminder.index,
+	}))
+}
+
+/**
  * How long a just-completed task stays in the open list before it moves to the
  * completed ones, as in Apple Reminders: long enough to see what was checked off
  * and to undo a slip.
@@ -1712,7 +1733,10 @@ const actions = {
 	 * @param {Task} task The task to update
 	 */
 	async setStart(context, { task, start, allDay }) {
+		// A later start can push the due date along; the automatic reminder follows
+		const before = { oldDue: dueOf(task), oldAllDay: task.allDay }
 		context.commit('setStart', { task, start, allDay })
+		applyReminderRule(context, task, before)
 		context.dispatch('updateTask', task)
 	},
 
@@ -1736,6 +1760,8 @@ const actions = {
 	 * @param {number} data.day The day to set
 	 */
 	async setDate(context, { task, day }) {
+		// Dragging a task to another day moves its due date; the automatic reminder follows
+		const before = { oldDue: dueOf(task), oldAllDay: task.allDay }
 		const start = task.startMoment.startOf('day')
 		const due = task.dueMoment.startOf('day')
 		day = moment().startOf('day').add(day, 'days')
@@ -1757,6 +1783,7 @@ const actions = {
 			if (diff !== day) {
 				const newDue = task.dueMoment.year(day.year()).month(day.month()).date(day.date())
 				context.commit('setDue', { task, due: newDue })
+				applyReminderRule(context, task, before)
 				context.dispatch('updateTask', task)
 			}
 		// Set the start date to appropriate value (make start the default)
@@ -2134,8 +2161,9 @@ const actions = {
 						allDay: freshTask.allDay,
 					})
 				}
-				// The automatic reminder follows the due date to the next occurrence
-				applyReminderRule(context, freshTask, beforeNext)
+				// The reminders belong to the occurrence: every fixed one moves by as much
+				// as the due date did. (Reminders measured from a date follow by themselves.)
+				shiftFixedReminders(context, freshTask, beforeNext.oldDue)
 
 				// Reset completion status on master task
 				freshTask.setComplete(0)

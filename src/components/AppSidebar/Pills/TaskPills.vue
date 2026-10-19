@@ -270,7 +270,9 @@ export default {
 			if (!result || (!result.added && !result.removed?.length)) {
 				return
 			}
-			const undo = () => this.$store.dispatch('undoReminderChange', { task: this.task, ...result })
+			// Bound now: the panel reuses this component when another task is opened
+			const task = this.task
+			const undo = () => this.$store.dispatch('undoReminderChange', { task, ...result })
 			if (result.added) {
 				const minute = date => Math.floor(date.getTime() / 60000)
 				const added = fixedReminders(this.task.alarms).find(reminder => minute(reminder.at) === minute(result.added))
