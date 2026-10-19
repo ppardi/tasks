@@ -71,6 +71,8 @@ put admin admin rollover-e2e reminder "$(alarm "$(utc -1 9)")"
 put admin admin rollover-e2e weekly-old "DUE:$(utc -9 9)" "RRULE:FREQ=WEEKLY;COUNT=5"
 put admin admin rollover-e2e weekly-recent "DUE:$(utc -2 9)" "RRULE:FREQ=WEEKLY"
 put admin admin rollover-e2e done "DUE:$(utc -1 16)" "STATUS:COMPLETED"
+# Rolled yesterday, then completed on the phone: the next occurrence is today, the count was kept
+put admin admin rollover-e2e phone-done "DUE:$(utc +0 9)" "RRULE:FREQ=DAILY" "X-NEXTCLOUD-TASKS-MISSED:3" "X-NEXTCLOUD-TASKS-ROLLED-TO:$(utc -1 9)"
 put bob bobpass123x rollover-e2e bobs "DUE:$(utc -1 16)"
 
 echo "== run"
@@ -84,6 +86,9 @@ check "reminder-only task: reminder lands today" "$(prop admin admin rollover-e2
 check "reminder-only task keeps its original reminder" "$(prop admin admin rollover-e2e reminder X-NEXTCLOUD-TASKS-ORIGINAL-REMINDER)" "X-NEXTCLOUD-TASKS-ORIGINAL-REMINDER:$(utc -1 9)"
 check "weekly task jumps to its latest occurrence" "$(prop admin admin rollover-e2e weekly-old DUE)" "DUE:$(utc -2 9)"
 check "weekly task counts the missed one" "$(prop admin admin rollover-e2e weekly-old X-NEXTCLOUD-TASKS-MISSED)" "X-NEXTCLOUD-TASKS-MISSED:1"
+check "weekly task records the date it was left on" "$(prop admin admin rollover-e2e weekly-old X-NEXTCLOUD-TASKS-ROLLED-TO)" "X-NEXTCLOUD-TASKS-ROLLED-TO:$(utc -2 9)"
+check "completed on the phone onto today: the count goes" "$(prop admin admin rollover-e2e phone-done X-NEXTCLOUD-TASKS-MISSED)" ""
+check "completed on the phone onto today: the date stays" "$(prop admin admin rollover-e2e phone-done DUE)" "DUE:$(utc +0 9)"
 check "weekly task uses up COUNT" "$(prop admin admin rollover-e2e weekly-old RRULE)" "RRULE:FREQ=WEEKLY;COUNT=4"
 check "weekly task within its week stays put" "$(prop admin admin rollover-e2e weekly-recent DUE)" "DUE:$(utc -2 9)"
 check "completed task stays put" "$(prop admin admin rollover-e2e done DUE)" "DUE:$(utc -1 16)"

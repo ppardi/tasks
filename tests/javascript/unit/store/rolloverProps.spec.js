@@ -57,13 +57,14 @@ describe('store/tasks - a date changed by hand clears the rollover marks', () =>
 		vi.useRealTimers()
 	})
 
-	const rolled = () => makeTask(['DUE:20261021T230000Z', 'X-NEXTCLOUD-TASKS-ORIGINAL-DUE:20261018T230000Z', 'X-NEXTCLOUD-TASKS-MISSED:1'])
+	const rolled = () => makeTask(['DUE:20261021T230000Z', 'X-NEXTCLOUD-TASKS-ORIGINAL-DUE:20261018T230000Z', 'X-NEXTCLOUD-TASKS-MISSED:1', 'X-NEXTCLOUD-TASKS-ROLLED-TO:20261021T230000Z'])
 
 	it('when the due date is set', async () => {
 		const task = rolled()
 		await actions.setDue(makeContext(task), { task, due: moment(at(24, 16)), allDay: false })
 		expect(task.originalDue).toBeNull()
 		expect(task.missedCount).toBe(0)
+		expect(task.vtodo.hasProperty('x-nextcloud-tasks-rolled-to')).toBe(false)
 	})
 
 	it('when the task is dragged to another day', async () => {

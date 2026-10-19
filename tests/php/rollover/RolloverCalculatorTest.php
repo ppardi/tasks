@@ -221,17 +221,62 @@ class RolloverCalculatorTest extends TestCase {
 		$this->assertFalse(isset($todo->{RolloverCalculator::ORIGINAL_DUE}));
 		$this->assertFalse(isset($todo->{RolloverCalculator::ORIGINAL_REMINDER}));
 		$this->assertFalse(isset($todo->{RolloverCalculator::MISSED}));
+		$this->assertFalse(isset($todo->{RolloverCalculator::ROLLED_TO}));
 	}
 
 	public static function movedOnThePhone(): array {
 		return [
 			'rolled task moved to a later day' => [['DUE:20261030T230000Z', 'X-NEXTCLOUD-TASKS-ORIGINAL-DUE:20261018T230000Z']],
 			'repeating task completed, next occurrence ahead' => [['DUE:20261026T160000Z', 'RRULE:FREQ=WEEKLY', 'X-NEXTCLOUD-TASKS-MISSED:2']],
+			'rolled task moved to another time today' => [['DUE:20261021T230000Z', 'X-NEXTCLOUD-TASKS-ORIGINAL-DUE:20261018T160000Z', 'X-NEXTCLOUD-TASKS-ROLLED-TO:20261021T160000Z']],
+			'repeating task completed onto today' => [['DUE:20261021T150000Z', 'RRULE:FREQ=DAILY', 'X-NEXTCLOUD-TASKS-MISSED:3', 'X-NEXTCLOUD-TASKS-ROLLED-TO:20261020T150000Z']],
+			'reminder-only task given another reminder today' => [[
+				'X-NEXTCLOUD-TASKS-ORIGINAL-REMINDER:20261019T160000Z',
+				'X-NEXTCLOUD-TASKS-ROLLED-TO:20261021T160000Z',
+				"BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:R\r\nTRIGGER;VALUE=DATE-TIME:20261021T210000Z\r\nEND:VALARM",
+			]],
 			'reminder-only task given a later reminder' => [[
 				'X-NEXTCLOUD-TASKS-ORIGINAL-REMINDER:20261019T160000Z',
 				"BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:R\r\nTRIGGER;VALUE=DATE-TIME:20261025T160000Z\r\nEND:VALARM",
 			]],
 		];
+	}
+
+	/**
+	 * Another client (the phone) completed yesterday's occurrence of a daily
+	 * task and kept the count; the next occurrence is today, so the date alone
+	 * looks just like a task the job itself left on today.
+	 */
+	public function testCountGoesWhenAnotherClientCompletedTheTaskOntoToday(): void {
+		$rolled = $this->task('DUE:20261019T150000Z', 'RRULE:FREQ=DAILY', 'X-NEXTCLOUD-TASKS-MISSED:2');
+		$this->calculator->apply($rolled, $this->zone, new DateTimeImmutable('2026-10-20 01:00', $this->zone));
+		$this->assertSame('3', (string)$rolled->VTODO->{RolloverCalculator::MISSED});
+		$this->assertSame('2026-10-20 08:00', $this->local($rolled, 'DUE'));
+		// Completed on the phone in the evening: DUE moves on to the 21st, the count is kept
+		$rolled->VTODO->DUE = '20261021T150000Z';
+
+		$this->assertTrue($this->apply($rolled));
+		$this->assertFalse(isset($rolled->VTODO->{RolloverCalculator::MISSED}));
+		$this->assertSame('2026-10-21 08:00', $this->local($rolled, 'DUE'));
+	}
+
+	public function testUntouchedRepeatingTaskKeepsCountingNightAfterNight(): void {
+		$calendar = $this->task('DUE:20261018T150000Z', 'RRULE:FREQ=DAILY');
+		foreach (['2026-10-19' => '1', '2026-10-20' => '2', '2026-10-21' => '3'] as $night => $missed) {
+			$this->assertTrue($this->calculator->apply($calendar, $this->zone, new DateTimeImmutable("$night 01:00", $this->zone)), $night);
+			$this->assertSame($missed, (string)$calendar->VTODO->{RolloverCalculator::MISSED}, $night);
+			$this->assertSame("$night 08:00", $this->local($calendar, 'DUE'), $night);
+		}
+		$this->assertSame('20261021T150000Z', (string)$calendar->VTODO->{RolloverCalculator::ROLLED_TO});
+	}
+
+	public function testRolledTaskRecordsTheDateItWasLeftOn(): void {
+		$calendar = $this->task('DUE:20261020T230000Z');
+		$this->apply($calendar);
+		$this->assertSame('20261021T230000Z', (string)$calendar->VTODO->{RolloverCalculator::ROLLED_TO});
+		$reminderOnly = $this->task($this->alarm('20261019T160000Z'));
+		$this->apply($reminderOnly);
+		$this->assertSame('20261021T160000Z', (string)$reminderOnly->VTODO->{RolloverCalculator::ROLLED_TO});
 	}
 
 	public function testMarksStayOnATaskRolledToToday(): void {

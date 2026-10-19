@@ -361,7 +361,7 @@ export default class Task {
 	 * Removes the rollover marks: a date set by hand is a new plan
 	 */
 	clearRollover() {
-		['x-nextcloud-tasks-original-due', 'x-nextcloud-tasks-original-reminder', 'x-nextcloud-tasks-missed']
+		['x-nextcloud-tasks-original-due', 'x-nextcloud-tasks-original-reminder', 'x-nextcloud-tasks-missed', 'x-nextcloud-tasks-rolled-to']
 			.forEach(name => this.vtodo.removeAllProperties(name))
 		this.updateLastModified()
 	}

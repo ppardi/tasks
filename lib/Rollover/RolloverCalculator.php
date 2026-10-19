@@ -33,6 +33,12 @@ class RolloverCalculator {
 	public const ORIGINAL_DUE = 'X-NEXTCLOUD-TASKS-ORIGINAL-DUE';
 	public const ORIGINAL_REMINDER = 'X-NEXTCLOUD-TASKS-ORIGINAL-REMINDER';
 	public const MISSED = 'X-NEXTCLOUD-TASKS-MISSED';
+	/**
+	 * The date the job left the task on, in UTC. The other marks describe that
+	 * date only: once the task has another (completed on the phone, moved in the
+	 * Calendar app) they are a stale account of an old plan.
+	 */
+	public const ROLLED_TO = 'X-NEXTCLOUD-TASKS-ROLLED-TO';
 
 	/** Guards against a pathological rule; ten years of daily occurrences. */
 	private const MAX_OCCURRENCES = 3660;
@@ -60,6 +66,14 @@ class RolloverCalculator {
 			$this->touch($todo);
 			return true;
 		}
+		if (!$this->roll($todo, $zone, $today, $now)) {
+			return false;
+		}
+		$todo->{self::ROLLED_TO} = $this->utc($this->currentDate($todo, $zone));
+		return true;
+	}
+
+	private function roll(Component $todo, DateTimeZone $zone, DateTimeImmutable $today, DateTimeImmutable $now): bool {
 		if (isset($todo->DUE)) {
 			return $this->rollDue($todo, $zone, $today, $now);
 		}
@@ -91,35 +105,53 @@ class RolloverCalculator {
 	}
 
 	/**
-	 * The marks only describe a task the job last moved, which always lands on
-	 * today or earlier. A task whose date is now after today was rescheduled by
-	 * hand somewhere (the phone, the Calendar app), and the marks would lie.
+	 * The marks only describe the date the job left the task on (ROLLED_TO). A
+	 * task with another date now was completed or rescheduled somewhere (the
+	 * phone, the Calendar app), and the marks would lie: a daily task completed
+	 * on the phone in the evening lands on the next day, which then looks just
+	 * like a task the job left on today.
+	 *
+	 * Marks written before ROLLED_TO existed fall back to the date alone: the
+	 * job always leaves a task on today or earlier, so only a later date is
+	 * known to be someone else's.
 	 *
 	 * @return bool Whether it removed them
 	 */
 	private function clearStaleMarks(Component $todo, DateTimeZone $zone, DateTimeImmutable $today): bool {
-		$marks = [self::ORIGINAL_DUE, self::ORIGINAL_REMINDER, self::MISSED];
+		$marks = [self::ORIGINAL_DUE, self::ORIGINAL_REMINDER, self::MISSED, self::ROLLED_TO];
 		if (!array_filter($marks, static fn (string $name): bool => isset($todo->{$name}))) {
 			return false;
 		}
-		$date = null;
-		if (isset($todo->DUE)) {
-			$date = $this->local($todo->DUE, $zone);
-		} elseif (isset($todo->RRULE) && isset($todo->DTSTART)) {
-			$date = $this->local($todo->DTSTART, $zone);
-		} else {
-			foreach ($this->fixedTriggers($todo) as $trigger) {
-				$at = $trigger->getDateTime()->setTimezone($zone);
-				$date = $date === null || $at > $date ? DateTimeImmutable::createFromInterface($at) : $date;
-			}
-		}
-		if ($date === null || $this->day($date) <= $today) {
+		$date = $this->currentDate($todo, $zone);
+		$stale = isset($todo->{self::ROLLED_TO})
+			? $date === null || $this->utc($date) !== (string)$todo->{self::ROLLED_TO}
+			: $date !== null && $this->day($date) > $today;
+		if (!$stale) {
 			return false;
 		}
 		foreach ($marks as $name) {
 			$todo->remove($name);
 		}
 		return true;
+	}
+
+	/**
+	 * @return DateTimeImmutable|null The date the task shows: its due date, the
+	 *   start of a repeating task with no due date, else its latest fixed reminder
+	 */
+	private function currentDate(Component $todo, DateTimeZone $zone): ?DateTimeImmutable {
+		if (isset($todo->DUE)) {
+			return $this->local($todo->DUE, $zone);
+		}
+		if (isset($todo->RRULE) && isset($todo->DTSTART)) {
+			return $this->local($todo->DTSTART, $zone);
+		}
+		$date = null;
+		foreach ($this->fixedTriggers($todo) as $trigger) {
+			$at = DateTimeImmutable::createFromInterface($trigger->getDateTime())->setTimezone($zone);
+			$date = $date === null || $at > $date ? $at : $date;
+		}
+		return $date;
 	}
 
 	private function isClosed(Component $todo): bool {
@@ -283,6 +315,10 @@ class RolloverCalculator {
 
 	private function local(DateTimeProperty $property, DateTimeZone $zone): DateTimeImmutable {
 		return DateTimeImmutable::createFromInterface($property->getDateTime($zone))->setTimezone($zone);
+	}
+
+	private function utc(DateTimeInterface $moment): string {
+		return DateTimeImmutable::createFromInterface($moment)->setTimezone(new DateTimeZone('UTC'))->format('Ymd\THis\Z');
 	}
 
 	private function day(DateTimeInterface $moment): DateTimeImmutable {
