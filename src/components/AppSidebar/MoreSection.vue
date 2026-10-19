@@ -68,8 +68,10 @@ export default {
 		text-align: start;
 		cursor: pointer;
 
+		// Nextcloud tints buttons on hover; this one only brightens its text
 		&:hover,
 		&:focus-visible {
+			background: none !important;
 			color: var(--color-main-text);
 		}
 	}

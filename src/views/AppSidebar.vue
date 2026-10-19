@@ -973,8 +973,14 @@ export default {
 					gap: 4px;
 					margin: 4px 12px 12px !important;
 					padding: 3px;
+					border: none !important;
 					border-radius: var(--border-radius-large);
 					background-color: var(--color-background-hover);
+				}
+
+				&__content {
+					border: none !important;
+					box-shadow: none !important;
 				}
 
 				&__tab {
