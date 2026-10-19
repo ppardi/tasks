@@ -139,6 +139,8 @@ const actions = {
 			calendarEnabled: loadState('tasks', 'calendarEnabled'),
 			showTasks: loadState('tasks', 'showTasks'),
 			calendarView: loadState('tasks', 'calendarView'),
+			// On unless the user turned it off
+			rollover: loadState('tasks', 'rollover', true),
 		})
 	},
 }

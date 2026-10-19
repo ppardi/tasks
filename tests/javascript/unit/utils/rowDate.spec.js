@@ -169,4 +169,11 @@ describe('utils/rowDate rowDate - rollover', () => {
 	it('says nothing more for a task that never rolled', () => {
 		expect(rowDate(task({ dueMoment: momentOf(new Date(2026, 9, 21, 16, 0)) }), opts).late).toBeNull()
 	})
+
+	it('says nothing once the date was moved ahead elsewhere, as on the phone', () => {
+		const moved = rowDate(task({ dueMoment: momentOf(new Date(2026, 9, 30, 16, 0)), originalDue: new Date(2026, 9, 18, 16, 0) }), opts)
+		expect(moved.late).toBeNull()
+		const advanced = rowDate(task({ dueMoment: momentOf(new Date(2026, 9, 26, 9, 0)), missedCount: 2 }), opts)
+		expect(advanced.late).toBeNull()
+	})
 })

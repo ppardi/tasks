@@ -96,10 +96,16 @@ export function reminderDate(alarms, now) {
  *
  * @param {object} task The task
  * @param {Date|null} original The original due date or reminder
+ * @param {Date} shown The date the task shows now
  * @param {Date} now The reference date
  * @return {string|null}
  */
-function lateText(task, original, now) {
+function lateText(task, original, shown, now) {
+	// The marks describe a task the nightly job left on today or earlier; a date
+	// moved ahead (on the phone, say) means a new plan, and the job clears them
+	if (startOfDay(shown) > startOfDay(now)) {
+		return null
+	}
 	if (task.missedCount > 0) {
 		return t('tasks', 'missed {count}', { count: task.missedCount })
 	}
@@ -142,7 +148,7 @@ export function rowDate(task, { now = new Date(), locale = getCanonicalLocale() 
 			text: shortDateLabel(date, timed, now, locale),
 			title: t('tasks', 'Due {date}', { date: full(date, timed) }),
 			overdue: timed ? date < now : startOfDay(date) < startOfDay(now),
-			late: lateText(task, task.originalDue ?? null, now),
+			late: lateText(task, task.originalDue ?? null, date, now),
 		}
 	}
 
@@ -152,7 +158,7 @@ export function rowDate(task, { now = new Date(), locale = getCanonicalLocale() 
 			text: shortDateLabel(date, true, now, locale),
 			title: t('tasks', 'Reminder {date}', { date: full(date, true) }),
 			overdue: date < now,
-			late: lateText(task, task.originalReminder ?? null, now),
+			late: lateText(task, task.originalReminder ?? null, date, now),
 		}
 	}
 

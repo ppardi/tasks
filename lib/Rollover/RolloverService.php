@@ -14,6 +14,7 @@ use DateTimeZone;
 use OCA\DAV\CalDAV\CalDavBackend;
 use OCP\App\IAppManager;
 use OCP\IConfig;
+use OCP\IDateTimeZone;
 use OCP\IUser;
 use OCP\IUserManager;
 use Psr\Log\LoggerInterface;
@@ -43,6 +44,7 @@ class RolloverService {
 		private IConfig $config,
 		private IUserManager $userManager,
 		private IAppManager $appManager,
+		private IDateTimeZone $dateTimeZone,
 		private LoggerInterface $logger,
 		private string $appName = 'tasks',
 	) {
@@ -89,6 +91,10 @@ class RolloverService {
 			if (($calendar['{http://owncloud.org/ns}owner-principal'] ?? null) !== ($calendar['principaluri'] ?? null)) {
 				continue;
 			}
+			// A list in the trash bin keeps its tasks as they were, in case it is restored
+			if (!empty($calendar['{http://nextcloud.com/ns}deleted-at'])) {
+				continue;
+			}
 			foreach ($this->calDav->getCalendarObjects($calendar['id']) as $row) {
 				if (($row['component'] ?? '') !== 'vtodo') {
 					continue;
@@ -114,13 +120,9 @@ class RolloverService {
 
 	/**
 	 * @return DateTimeZone The user's Nextcloud time zone, else the server's
+	 *   default_timezone (PHP's own default is always UTC inside Nextcloud)
 	 */
 	private function zoneFor(string $uid): DateTimeZone {
-		$name = $this->config->getUserValue($uid, 'core', 'timezone', '') ?: date_default_timezone_get();
-		try {
-			return new DateTimeZone($name);
-		} catch (Throwable) {
-			return new DateTimeZone('UTC');
-		}
+		return $this->dateTimeZone->getTimeZone(false, $uid);
 	}
 }

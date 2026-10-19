@@ -44,16 +44,82 @@ class RolloverCalculator {
 	 * @return bool Whether the task was changed
 	 */
 	public function apply(VCalendar $calendar, DateTimeZone $zone, DateTimeImmutable $now): bool {
-		$todo = $calendar->VTODO ?? null;
-		if (!$todo instanceof Component || $this->isClosed($todo)) {
+		$todos = $calendar->select('VTODO');
+		// One task per object; an object holding one occurrence of a repeating
+		// task (RECURRENCE-ID) belongs to its series and is left alone
+		if (count($todos) !== 1) {
+			return false;
+		}
+		$todo = reset($todos);
+		if (isset($todo->{'RECURRENCE-ID'}) || $this->isClosed($todo) || $this->hasUnknownZone($todo)) {
 			return false;
 		}
 		$today = $now->setTimezone($zone)->setTime(0, 0);
 
-		if (isset($todo->DUE)) {
-			return $this->rollDue($todo, $zone, $today);
+		if ($this->clearStaleMarks($todo, $zone, $today)) {
+			$this->touch($todo);
+			return true;
 		}
-		return $this->rollReminders($todo, $zone, $today);
+		if (isset($todo->DUE)) {
+			return $this->rollDue($todo, $zone, $today, $now);
+		}
+		if (isset($todo->RRULE) && isset($todo->DTSTART)) {
+			// A repeating task with only a start date: jump to its latest occurrence, never roll
+			$start = $this->local($todo->DTSTART, $zone);
+			return $this->day($start) < $today && ($this->rollRepeating($todo, $zone, $start, $today, $now) ?? false);
+		}
+		return $this->rollReminders($todo, $zone, $today, $now);
+	}
+
+	/**
+	 * A TZID PHP does not know resolves to UTC in sabre, and moving such a
+	 * date would silently change its time of day: leave the task alone.
+	 */
+	private function hasUnknownZone(Component $todo): bool {
+		foreach (['DUE', 'DTSTART'] as $name) {
+			$tzid = isset($todo->{$name}) ? $todo->{$name}['TZID'] : null;
+			if ($tzid === null) {
+				continue;
+			}
+			try {
+				new DateTimeZone((string)$tzid);
+			} catch (\Throwable) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * The marks only describe a task the job last moved, which always lands on
+	 * today or earlier. A task whose date is now after today was rescheduled by
+	 * hand somewhere (the phone, the Calendar app), and the marks would lie.
+	 *
+	 * @return bool Whether it removed them
+	 */
+	private function clearStaleMarks(Component $todo, DateTimeZone $zone, DateTimeImmutable $today): bool {
+		$marks = [self::ORIGINAL_DUE, self::ORIGINAL_REMINDER, self::MISSED];
+		if (!array_filter($marks, static fn (string $name): bool => isset($todo->{$name}))) {
+			return false;
+		}
+		$date = null;
+		if (isset($todo->DUE)) {
+			$date = $this->local($todo->DUE, $zone);
+		} elseif (isset($todo->RRULE) && isset($todo->DTSTART)) {
+			$date = $this->local($todo->DTSTART, $zone);
+		} else {
+			foreach ($this->fixedTriggers($todo) as $trigger) {
+				$at = $trigger->getDateTime()->setTimezone($zone);
+				$date = $date === null || $at > $date ? DateTimeImmutable::createFromInterface($at) : $date;
+			}
+		}
+		if ($date === null || $this->day($date) <= $today) {
+			return false;
+		}
+		foreach ($marks as $name) {
+			$todo->remove($name);
+		}
+		return true;
 	}
 
 	private function isClosed(Component $todo): bool {
@@ -61,7 +127,7 @@ class RolloverCalculator {
 		return $status === 'COMPLETED' || $status === 'CANCELLED' || isset($todo->COMPLETED);
 	}
 
-	private function rollDue(Component $todo, DateTimeZone $zone, DateTimeImmutable $today): bool {
+	private function rollDue(Component $todo, DateTimeZone $zone, DateTimeImmutable $today, DateTimeImmutable $now): bool {
 		/** @var DateTimeProperty $dueProperty */
 		$dueProperty = $todo->DUE;
 		$due = $this->local($dueProperty, $zone);
@@ -70,7 +136,7 @@ class RolloverCalculator {
 		}
 
 		if (isset($todo->RRULE)) {
-			$result = $this->rollRepeating($todo, $zone, $due, $today);
+			$result = $this->rollRepeating($todo, $zone, $due, $today, $now);
 			if ($result !== null) {
 				return $result;
 			}
@@ -84,7 +150,7 @@ class RolloverCalculator {
 				$original['VALUE'] = 'DATE';
 			}
 		}
-		$this->shiftDates($todo, $zone, $days);
+		$this->shiftDates($todo, $zone, $days, $now);
 		$this->touch($todo);
 		return true;
 	}
@@ -92,7 +158,7 @@ class RolloverCalculator {
 	/**
 	 * @return bool|null Whether it changed the task, or null when the series has ended
 	 */
-	private function rollRepeating(Component $todo, DateTimeZone $zone, DateTimeImmutable $due, DateTimeImmutable $today): ?bool {
+	private function rollRepeating(Component $todo, DateTimeZone $zone, DateTimeImmutable $due, DateTimeImmutable $today, DateTimeImmutable $now): ?bool {
 		$iterator = new RRuleIterator((string)$todo->RRULE, $due);
 		$index = 0;
 		$latestIndex = 0;
@@ -119,7 +185,7 @@ class RolloverCalculator {
 		}
 
 		$days = $this->daysBetween($this->day($due), $this->day($latest));
-		$this->shiftDates($todo, $zone, $days);
+		$this->shiftDates($todo, $zone, $days, $now);
 		$missed = (int)(string)($todo->{self::MISSED} ?? 0) + $latestIndex;
 		$todo->{self::MISSED} = (string)$missed;
 		$this->useUpCount($todo, $latestIndex);
@@ -136,7 +202,7 @@ class RolloverCalculator {
 		$todo->RRULE->setParts($parts);
 	}
 
-	private function rollReminders(Component $todo, DateTimeZone $zone, DateTimeImmutable $today): bool {
+	private function rollReminders(Component $todo, DateTimeZone $zone, DateTimeImmutable $today, DateTimeImmutable $now): bool {
 		$latest = null;
 		foreach ($this->fixedTriggers($todo) as $trigger) {
 			$at = $trigger->getDateTime()->setTimezone($zone);
@@ -151,28 +217,35 @@ class RolloverCalculator {
 		if (!isset($todo->{self::ORIGINAL_REMINDER})) {
 			$todo->add(self::ORIGINAL_REMINDER, $latest->setTimezone(new DateTimeZone('UTC'))->format('Ymd\THis\Z'));
 		}
-		$this->shiftTriggers($todo, $zone, $this->daysBetween($this->day($latest), $today));
+		$this->shiftTriggers($todo, $zone, $this->daysBetween($this->day($latest), $today), $now);
 		$this->touch($todo);
 		return true;
 	}
 
 	/**
-	 * Moves DUE, DTSTART and every fixed-time reminder by whole days in the
-	 * user's calendar, keeping each one's time of day and value type.
+	 * Moves DUE, DTSTART and the fixed-time reminders that have already passed
+	 * by whole days in the user's calendar, keeping each one's time of day and
+	 * value type. A reminder still to come stays: pushing it on every night
+	 * would mean it never fires.
 	 */
-	private function shiftDates(Component $todo, DateTimeZone $zone, int $days): void {
+	private function shiftDates(Component $todo, DateTimeZone $zone, int $days, DateTimeImmutable $now): void {
 		foreach (['DUE', 'DTSTART'] as $name) {
 			if (isset($todo->{$name})) {
 				$this->shiftProperty($todo->{$name}, $zone, $days);
 			}
 		}
-		$this->shiftTriggers($todo, $zone, $days);
+		$this->shiftTriggers($todo, $zone, $days, $now);
 	}
 
-	private function shiftTriggers(Component $todo, DateTimeZone $zone, int $days): void {
+	private function shiftTriggers(Component $todo, DateTimeZone $zone, int $days, DateTimeImmutable $now): void {
 		foreach ($this->fixedTriggers($todo) as $trigger) {
-			$at = $trigger->getDateTime()->setTimezone($zone)->modify("+$days days");
-			$trigger->setValue($at->setTimezone(new DateTimeZone('UTC'))->format('Ymd\THis\Z'));
+			$at = $trigger->getDateTime()->setTimezone($zone);
+			if ($at >= $now) {
+				continue;
+			}
+			$trigger->setValue($at->modify("+$days days")->setTimezone(new DateTimeZone('UTC'))->format('Ymd\THis\Z'));
+			// A UTC value must not carry a TZID (RFC 5545)
+			unset($trigger['TZID']);
 		}
 	}
 

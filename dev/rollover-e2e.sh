@@ -98,6 +98,29 @@ occ user:setting admin tasks rollover_last_date --delete > /dev/null 2>&1
 occ background-job:execute "$JOB" --force-execute > /dev/null
 check "same night, guard cleared: still nothing written" "$(etag admin admin rollover-e2e timed) $(etag admin admin rollover-e2e weekly-old)" "$BEFORE"
 
+echo "== a list in the trash"
+curl -s -u admin:admin -X MKCALENDAR "$BASE/admin/rollover-trash/" -H 'Content-Type: application/xml' --data \
+	'<c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:set><d:prop><d:displayname>Rollover trash</d:displayname><c:supported-calendar-component-set><c:comp name="VTODO"/></c:supported-calendar-component-set></d:prop></d:set></c:mkcalendar>' -o /dev/null
+put admin admin rollover-trash trashed "DUE:$(utc -1 16)"
+curl -s -u admin:admin -X DELETE "$BASE/admin/rollover-trash/" -o /dev/null
+occ user:setting admin tasks rollover_last_date --delete > /dev/null 2>&1
+occ background-job:execute "$JOB" --force-execute > /dev/null
+TRASHED=$(docker exec tasks-pkg-db psql -U nextcloud -d nextcloud -tAc "select convert_from(calendardata, 'UTF8') from oc_calendarobjects where uid = 'trashed'" | tr -d '\r' | grep -E '^DUE[;:]' | head -1)
+check "a list in the trash is not rolled" "$TRASHED" "DUE:$(utc -1 16)"
+
+echo "== no time zone of their own: the server's default"
+occ config:system:set default_timezone --value="$ZONE" > /dev/null
+occ user:setting admin core timezone --delete > /dev/null 2>&1
+# 23:30 yesterday in Phoenix is already today in UTC
+LATE=$(TZ=$ZONE date -v-1d -v23H -v30M -v0S +%s | xargs -I{} date -u -r {} +%Y%m%dT%H%M%SZ)
+LATE_TODAY=$(TZ=$ZONE date -v23H -v30M -v0S +%s | xargs -I{} date -u -r {} +%Y%m%dT%H%M%SZ)
+put admin admin rollover-e2e late-evening "DUE:$LATE"
+occ user:setting admin tasks rollover_last_date --delete > /dev/null 2>&1
+occ background-job:execute "$JOB" --force-execute > /dev/null
+check "rolled by the server's default zone, not UTC" "$(prop admin admin rollover-e2e late-evening DUE)" "DUE:$LATE_TODAY"
+occ user:setting admin core timezone "$ZONE" > /dev/null
+occ config:system:delete default_timezone > /dev/null
+
 echo "== switched off"
 put admin admin rollover-e2e off "DUE:$(utc -1 16)"
 occ user:setting admin tasks various_rollover 0 > /dev/null

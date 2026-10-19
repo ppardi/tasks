@@ -187,4 +187,81 @@ class RolloverCalculatorTest extends TestCase {
 		$this->assertTrue($this->apply($calendar));
 		$this->assertSame('2026-10-21 23:30', $this->local($calendar, 'DUE'));
 	}
+
+	public function testRepeatingTaskWithOnlyAStartDateStaysOnItsOccurrence(): void {
+		$calendar = $this->task('DTSTART:20261019T160000Z', 'RRULE:FREQ=WEEKLY', $this->alarm('20261019T150000Z'));
+		$before = $calendar->serialize();
+		$this->assertFalse($this->apply($calendar));
+		$this->assertSame($before, $calendar->serialize());
+	}
+
+	public function testRepeatingTaskWithOnlyAStartDateJumpsToItsLatestOccurrence(): void {
+		$calendar = $this->task('DTSTART:20261012T160000Z', 'RRULE:FREQ=WEEKLY', $this->alarm('20261012T150000Z'));
+		$this->assertTrue($this->apply($calendar));
+		$this->assertSame('2026-10-19 09:00', $this->local($calendar, 'DTSTART'));
+		$this->assertSame(['2026-10-19 08:00'], $this->alarmsLocal($calendar));
+		$this->assertSame('1', (string)$calendar->VTODO->{RolloverCalculator::MISSED});
+	}
+
+	public function testAReminderStillToComeIsNotPushedBack(): void {
+		// Overdue task, with a reminder added for tomorrow morning
+		$calendar = $this->task('DUE:20261020T230000Z', $this->alarm('20261022T160000Z'));
+		$this->assertTrue($this->apply($calendar));
+		$this->assertSame('2026-10-21 16:00', $this->local($calendar, 'DUE'));
+		$this->assertSame(['2026-10-22 09:00'], $this->alarmsLocal($calendar));
+	}
+
+	/**
+	 * @dataProvider movedOnThePhone
+	 */
+	public function testMarksGoWhenTheDateWasMovedElsewhere(array $lines): void {
+		$calendar = $this->task(...$lines);
+		$this->assertTrue($this->apply($calendar));
+		$todo = $calendar->VTODO;
+		$this->assertFalse(isset($todo->{RolloverCalculator::ORIGINAL_DUE}));
+		$this->assertFalse(isset($todo->{RolloverCalculator::ORIGINAL_REMINDER}));
+		$this->assertFalse(isset($todo->{RolloverCalculator::MISSED}));
+	}
+
+	public static function movedOnThePhone(): array {
+		return [
+			'rolled task moved to a later day' => [['DUE:20261030T230000Z', 'X-NEXTCLOUD-TASKS-ORIGINAL-DUE:20261018T230000Z']],
+			'repeating task completed, next occurrence ahead' => [['DUE:20261026T160000Z', 'RRULE:FREQ=WEEKLY', 'X-NEXTCLOUD-TASKS-MISSED:2']],
+			'reminder-only task given a later reminder' => [[
+				'X-NEXTCLOUD-TASKS-ORIGINAL-REMINDER:20261019T160000Z',
+				"BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:R\r\nTRIGGER;VALUE=DATE-TIME:20261025T160000Z\r\nEND:VALARM",
+			]],
+		];
+	}
+
+	public function testMarksStayOnATaskRolledToToday(): void {
+		$calendar = $this->task('DUE:20261021T230000Z', 'X-NEXTCLOUD-TASKS-ORIGINAL-DUE:20261018T230000Z');
+		$this->assertFalse($this->apply($calendar));
+		$this->assertTrue(isset($calendar->VTODO->{RolloverCalculator::ORIGINAL_DUE}));
+	}
+
+	public function testUnknownTimeZoneIsLeftAlone(): void {
+		$calendar = $this->task('DUE;TZID=Custom Zone:20261020T160000');
+		$before = $calendar->serialize();
+		$this->assertFalse($this->apply($calendar));
+		$this->assertSame($before, $calendar->serialize());
+	}
+
+	public function testOneOccurrenceOfARepeatingTaskIsLeftAlone(): void {
+		$calendar = $this->task('DUE:20261020T230000Z', 'RECURRENCE-ID:20261020T230000Z');
+		$before = $calendar->serialize();
+		$this->assertFalse($this->apply($calendar));
+		$this->assertSame($before, $calendar->serialize());
+	}
+
+	public function testAMovedReminderIsWrittenAsPlainUtc(): void {
+		$calendar = $this->task(
+			'DUE:20261020T230000Z',
+			"BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:R\r\nTRIGGER;VALUE=DATE-TIME;TZID=America/Phoenix:20261020T220000Z\r\nEND:VALARM",
+		);
+		$this->assertTrue($this->apply($calendar));
+		$trigger = $calendar->VTODO->VALARM->TRIGGER;
+		$this->assertFalse(isset($trigger['TZID']));
+		$this->assertSame('20261021T220000Z', (string)$trigger);
+	}
 }
