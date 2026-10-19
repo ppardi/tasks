@@ -147,3 +147,26 @@ describe('utils/rowDate rowDate', () => {
 		expect(result).toMatchObject({ text: 'Completed Today', overdue: false })
 	})
 })
+
+describe('utils/rowDate rowDate - rollover', () => {
+	it('says how many days late a rolled-over task is', () => {
+		const due = rowDate(task({ dueMoment: momentOf(new Date(2026, 9, 21, 16, 0)), originalDue: new Date(2026, 9, 18, 16, 0) }), opts)
+		expect(due).toMatchObject({ text: 'Today, 4:00 PM', late: '3 days late' })
+		const oneDay = rowDate(task({ allDay: true, dueMoment: momentOf(new Date(2026, 9, 21)), originalDue: new Date(2026, 9, 20) }), opts)
+		expect(oneDay.late).toBe('1 day late')
+	})
+
+	it('counts from the original reminder for a reminder-only task', () => {
+		const result = rowDate(task({ alarms: [absoluteAlarm(new Date(2026, 9, 21, 17, 0))], originalReminder: new Date(2026, 9, 19, 17, 0) }), opts)
+		expect(result.late).toBe('2 days late')
+	})
+
+	it('says how many occurrences a repeating task missed', () => {
+		const result = rowDate(task({ dueMoment: momentOf(new Date(2026, 9, 19, 9, 0)), missedCount: 2 }), opts)
+		expect(result.late).toBe('missed 2')
+	})
+
+	it('says nothing more for a task that never rolled', () => {
+		expect(rowDate(task({ dueMoment: momentOf(new Date(2026, 9, 21, 16, 0)) }), opts).late).toBeNull()
+	})
+})

@@ -27,6 +27,7 @@
 import moment from '@nextcloud/moment'
 
 import ICAL from 'ical.js'
+import { toRaw } from 'vue'
 import { RecurValue } from '@nextcloud/calendar-js'
 import { randomUUID } from '../utils/crypto.js'
 import {
@@ -305,6 +306,64 @@ export default class Task {
 
 	get closed() {
 		return this.completed || this._status === 'CANCELLED'
+	}
+
+	/**
+	 * Reads a date the nightly rollover wrote into an X- property: a DATE
+	 * (YYYYMMDD, local midnight), a UTC DATE-TIME (…Z) or a floating one.
+	 *
+	 * @param {string} name The property name
+	 * @return {Date|null}
+	 */
+	_rolloverDate(name) {
+		const value = toRaw(this.vtodo).getFirstPropertyValue(name)
+		if (value instanceof ICAL.Time) {
+			return value.toJSDate()
+		}
+		const match = typeof value === 'string' && value.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/)
+		if (!match) {
+			return null
+		}
+		const [, y, mo, d, h = '0', mi = '0', s = '0', utc] = match
+		return utc
+			? new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s))
+			: new Date(+y, +mo - 1, +d, +h, +mi, +s)
+	}
+
+	/**
+	 * The due date before the nightly rollover first moved this task
+	 *
+	 * @return {Date|null}
+	 */
+	get originalDue() {
+		return this._rolloverDate('x-nextcloud-tasks-original-due')
+	}
+
+	/**
+	 * For a reminder-only task, its reminder before the rollover first moved it
+	 *
+	 * @return {Date|null}
+	 */
+	get originalReminder() {
+		return this._rolloverDate('x-nextcloud-tasks-original-reminder')
+	}
+
+	/**
+	 * How many occurrences of a repeating task passed undone
+	 *
+	 * @return {number}
+	 */
+	get missedCount() {
+		return parseInt(toRaw(this.vtodo).getFirstPropertyValue('x-nextcloud-tasks-missed'), 10) || 0
+	}
+
+	/**
+	 * Removes the rollover marks: a date set by hand is a new plan
+	 */
+	clearRollover() {
+		['x-nextcloud-tasks-original-due', 'x-nextcloud-tasks-original-reminder', 'x-nextcloud-tasks-missed']
+			.forEach(name => this.vtodo.removeAllProperties(name))
+		this.updateLastModified()
 	}
 
 	/**

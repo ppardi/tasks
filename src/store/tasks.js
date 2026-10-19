@@ -52,6 +52,19 @@ function automaticAlarm(at) {
 }
 
 /**
+ * A date changed by hand is a new plan: the nightly rollover's marks (original
+ * date, days late, missed count) no longer apply.
+ *
+ * @param {object} context The store context
+ * @param {Task} task The task
+ */
+function clearRolloverMarks(context, task) {
+	if (task.originalDue || task.originalReminder || task.missedCount) {
+		context.commit('clearRollover', task)
+	}
+}
+
+/**
  * @param {Task} task The task
  * @return {Date|null} Its due date
  */
@@ -555,6 +568,16 @@ const mutations = {
 	 */
 	setLingering(state, { task, lingering }) {
 		task.lingering = lingering
+	},
+
+	/**
+	 * Removes the nightly rollover's marks from a task
+	 *
+	 * @param {object} state The store data
+	 * @param {Task} task The task
+	 */
+	clearRollover(state, task) {
+		task.clearRollover()
 	},
 
 	/**
@@ -1562,6 +1585,10 @@ const actions = {
 	 */
 	async addAlarm(context, { task, alarm }) {
 		context.commit('addAlarm', { task, alarm })
+		// A reminder-only task's reminder is its date
+		if (!task.dueMoment.isValid()) {
+			clearRolloverMarks(context, task)
+		}
 		context.dispatch('updateTask', task)
 	},
 
@@ -1573,6 +1600,10 @@ const actions = {
 	 */
 	async updateAlarm(context, { task, alarm, index }) {
 		context.commit('updateAlarm', { task, alarm, index })
+		// A reminder-only task's reminder is its date
+		if (!task.dueMoment.isValid()) {
+			clearRolloverMarks(context, task)
+		}
 		context.dispatch('updateTask', task)
 	},
 
@@ -1584,6 +1615,10 @@ const actions = {
 	 */
 	async removeAlarm(context, { task, indexes }) {
 		context.commit('removeAlarm', { task, indexes })
+		// A reminder-only task's reminder is its date
+		if (!task.dueMoment.isValid()) {
+			clearRolloverMarks(context, task)
+		}
 		context.dispatch('updateTask', task)
 	},
 
@@ -1696,6 +1731,7 @@ const actions = {
 	async setDue(context, { task, due, allDay }) {
 		const before = { oldDue: dueOf(task), oldAllDay: task.allDay }
 		context.commit('setDue', { task, due, allDay })
+		clearRolloverMarks(context, task)
 		const result = applyReminderRule(context, task, before)
 		context.dispatch('updateTask', task)
 		return result
@@ -1736,6 +1772,9 @@ const actions = {
 		// A later start can push the due date along; the automatic reminder follows
 		const before = { oldDue: dueOf(task), oldAllDay: task.allDay }
 		context.commit('setStart', { task, start, allDay })
+		if (dueOf(task)?.getTime() !== before.oldDue?.getTime()) {
+			clearRolloverMarks(context, task)
+		}
 		applyReminderRule(context, task, before)
 		context.dispatch('updateTask', task)
 	},
@@ -1774,6 +1813,7 @@ const actions = {
 			if (diff !== day) {
 				const newStart = task.startMoment.year(day.year()).month(day.month()).date(day.date())
 				context.commit('setStart', { task, start: newStart })
+				clearRolloverMarks(context, task)
 				context.dispatch('updateTask', task)
 			}
 		// Adjust due date if start is not set but due is
@@ -1783,6 +1823,7 @@ const actions = {
 			if (diff !== day) {
 				const newDue = task.dueMoment.year(day.year()).month(day.month()).date(day.date())
 				context.commit('setDue', { task, due: newDue })
+				clearRolloverMarks(context, task)
 				applyReminderRule(context, task, before)
 				context.dispatch('updateTask', task)
 			}
@@ -2161,6 +2202,8 @@ const actions = {
 						allDay: freshTask.allDay,
 					})
 				}
+				// Done: the missed count starts over
+				clearRolloverMarks(context, freshTask)
 				// The reminders belong to the occurrence: every fixed one moves by as much
 				// as the due date did. (Reminders measured from a date follow by themselves.)
 				shiftFixedReminders(context, freshTask, beforeNext.oldDue)

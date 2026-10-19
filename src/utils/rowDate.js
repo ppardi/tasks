@@ -10,7 +10,7 @@
  * they were completed.
  */
 
-import { translate as t, getCanonicalLocale } from '@nextcloud/l10n'
+import { translate as t, translatePlural as n, getCanonicalLocale } from '@nextcloud/l10n'
 import ICAL from 'ical.js'
 import { toRaw } from 'vue'
 
@@ -91,11 +91,31 @@ export function reminderDate(alarms, now) {
 }
 
 /**
+ * What the nightly rollover adds after the date: occurrences a repeating task
+ * missed, else whole days since the original date.
+ *
+ * @param {object} task The task
+ * @param {Date|null} original The original due date or reminder
+ * @param {Date} now The reference date
+ * @return {string|null}
+ */
+function lateText(task, original, now) {
+	if (task.missedCount > 0) {
+		return t('tasks', 'missed {count}', { count: task.missedCount })
+	}
+	if (!original) {
+		return null
+	}
+	const days = Math.round((startOfDay(now) - startOfDay(original)) / DAY)
+	return days > 0 ? n('tasks', '%n day late', '%n days late', days) : null
+}
+
+/**
  * @param {object} task The task
  * @param {object} [options] Options
  * @param {Date} [options.now] The reference date, for tests
  * @param {string} [options.locale] A BCP 47 locale, for tests
- * @return {{text: string, title: string, overdue: boolean}|null} What to show, or null for no date
+ * @return {{text: string, title: string, overdue: boolean, late: string|null}|null} What to show, or null for no date
  */
 export function rowDate(task, { now = new Date(), locale = getCanonicalLocale() } = {}) {
 	const full = (date, timed) => new Intl.DateTimeFormat(locale, timed
@@ -111,6 +131,7 @@ export function rowDate(task, { now = new Date(), locale = getCanonicalLocale() 
 			text: t('tasks', 'Completed {date}', { date: shortDateLabel(date, false, now, locale) }),
 			title: t('tasks', 'Completed {date}', { date: full(date, true) }),
 			overdue: false,
+			late: null,
 		}
 	}
 
@@ -121,6 +142,7 @@ export function rowDate(task, { now = new Date(), locale = getCanonicalLocale() 
 			text: shortDateLabel(date, timed, now, locale),
 			title: t('tasks', 'Due {date}', { date: full(date, timed) }),
 			overdue: timed ? date < now : startOfDay(date) < startOfDay(now),
+			late: lateText(task, task.originalDue ?? null, now),
 		}
 	}
 
@@ -130,6 +152,7 @@ export function rowDate(task, { now = new Date(), locale = getCanonicalLocale() 
 			text: shortDateLabel(date, true, now, locale),
 			title: t('tasks', 'Reminder {date}', { date: full(date, true) }),
 			overdue: date < now,
+			late: lateText(task, task.originalReminder ?? null, now),
 		}
 	}
 

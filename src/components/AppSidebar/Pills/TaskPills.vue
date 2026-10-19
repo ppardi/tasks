@@ -147,7 +147,7 @@ import TagsPicker from './TagsPicker.vue'
 import formatRecurrenceRule from '../../../filters/recurrenceRuleFormat.js'
 import { fixedReminders, reminderLabel } from '../../../utils/reminders.js'
 import { repeatPreset, repeatPresets } from '../../../utils/repeatPresets.js'
-import { shortDateLabel } from '../../../utils/rowDate.js'
+import { rowDate, shortDateLabel } from '../../../utils/rowDate.js'
 
 import { showUndo } from '@nextcloud/dialogs'
 import { translate as t, translatePlural as n, getCanonicalLocale } from '@nextcloud/l10n'
@@ -203,7 +203,16 @@ export default {
 		},
 
 		dueLabel() {
-			return this.due ? shortDateLabel(this.due, !this.task.allDay, new Date(), getCanonicalLocale()) : ''
+			if (!this.due) {
+				return ''
+			}
+			const label = shortDateLabel(this.due, !this.task.allDay, new Date(), getCanonicalLocale())
+			return this.late ? `${label} · ${this.late}` : label
+		},
+
+		// Days late or occurrences missed, from the nightly rollover
+		late() {
+			return rowDate(this.task)?.late ?? null
 		},
 
 		dueLate() {
@@ -218,10 +227,13 @@ export default {
 		},
 
 		reminders() {
-			return this.task.alarms.map((alarm, index) => ({
-				index,
-				label: reminderLabel(alarm, this.task, { locale: getCanonicalLocale() }),
-			}))
+			// A reminder-only task shows its lateness on its latest fixed reminder
+			const fixed = this.due ? [] : fixedReminders(this.task.alarms)
+			const latest = fixed.length ? fixed.reduce((a, b) => (b.at > a.at ? b : a)).index : null
+			return this.task.alarms.map((alarm, index) => {
+				const label = reminderLabel(alarm, this.task, { locale: getCanonicalLocale() })
+				return { index, label: index === latest && this.late ? `${label} · ${this.late}` : label }
+			})
 		},
 
 		repeatLabel() {

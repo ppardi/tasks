@@ -53,7 +53,7 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 					<span v-if="rowDate"
 						:class="{ 'summary__date--overdue': rowDate.overdue }"
 						:title="rowDate.title"
-						class="summary__date"><span class="summary__pipe" aria-hidden="true">|</span>{{ rowDate.text }}</span>
+						class="summary__date"><span class="summary__pipe" aria-hidden="true">|</span>{{ rowDate.text }}<span v-if="rowDate.late" class="summary__late"> · {{ rowDate.late }}</span></span>
 				</div>
 				<div v-if="task.tags.length > 0" class="tags-list">
 					<span v-for="(tag, index) in task.tags"
@@ -789,6 +789,11 @@ $breakpoint-mobile: 1024px;
 						&--overdue {
 							color: var(--color-text-error);
 						}
+					}
+
+					// What the nightly rollover adds: days late, or occurrences missed
+					&__late {
+						color: var(--color-text-error);
 					}
 
 					&__pipe {
