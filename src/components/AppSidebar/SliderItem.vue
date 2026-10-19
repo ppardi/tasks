@@ -31,7 +31,7 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 			<span class="content__icon">
 				<slot name="icon" />
 			</span>
-			<span v-show="!editing" class="content__name">
+			<span v-show="!editing" :class="{ 'content__name--empty': !value }" class="content__name">
 				{{ propertyString }}
 			</span>
 			<div v-if="editing" class="content__input">

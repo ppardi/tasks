@@ -31,7 +31,10 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 			<span class="content__icon">
 				<slot name="icon" />
 			</span>
-			<span v-show="!editing" v-linkify="{text: propertyString, linkify: true}" class="content__name" />
+			<span v-show="!editing"
+				v-linkify="{text: propertyString, linkify: true}"
+				:class="{ 'content__name--empty': !value }"
+				class="content__name" />
 			<div v-if="editing" class="content__input">
 				<input ref="input"
 					v-model="newValue"

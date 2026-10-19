@@ -158,25 +158,105 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 						:checked="allDay"
 						:read-only="readOnly"
 						:property-string="t('tasks', 'All day')"
-						@set-checked="toggleAllDay(task)" />
+						@set-checked="toggleAllDay(task)">
+						<template #icon>
+							<WeatherSunny :size="20" />
+						</template>
+					</CheckboxItem>
 					<CalendarPickerItem :disabled="readOnly"
 						:calendar="task.calendar"
 						:calendars="targetCalendars"
 						@change-calendar="changeCalendar" />
 				</div>
-				<DateTimePickerItem v-show="!readOnly || task.start"
-					:date="task.startMoment"
-					:value="newStartDate"
-					:all-day="allDay"
-					:property-string="startDateString"
-					:read-only="readOnly"
-					:task="task"
-					@editing="(editing) => editingStart = editing"
-					@set-value="setStartDate">
-					<template #icon>
-						<CalendarStart :size="20" />
-					</template>
-				</DateTimePickerItem>
+				<MoreSection>
+					<DateTimePickerItem v-show="!readOnly || task.start"
+						:date="task.startMoment"
+						:value="newStartDate"
+						:all-day="allDay"
+						:property-string="startDateString"
+						:read-only="readOnly"
+						:task="task"
+						@editing="(editing) => editingStart = editing"
+						@set-value="setStartDate">
+						<template #icon>
+							<CalendarStart :size="20" />
+						</template>
+					</DateTimePickerItem>
+					<SliderItem v-show="!readOnly || task.priority"
+						:value="task.priority"
+						:property-string="priorityString"
+						:read-only="readOnly"
+						:min-value="0"
+						:max-value="9"
+						:task="task"
+						@set-value="({task, value}) => setPriority({ task, priority: value })">
+						<template #icon>
+							<Star :size="20" />
+						</template>
+					</SliderItem>
+					<MultiselectItem v-show="!readOnly || task.status"
+						:value="statusOptions.find( _ => _.type === task.status )"
+						:options="statusOptions"
+						:disabled="readOnly"
+						:placeholder="t('tasks', 'Status')"
+						icon="IconPulse"
+						@change-value="changeStatus" />
+					<SliderItem v-show="!readOnly || task.complete"
+						:value="task.complete"
+						:property-string="completeString"
+						:read-only="readOnly"
+						:min-value="0"
+						:max-value="100"
+						:task="task"
+						@set-value="({task, value}) => setPercentComplete({ task, complete: value })">
+						<template #icon>
+							<Percent :size="20" />
+						</template>
+					</SliderItem>
+					<TextItem v-show="!readOnly || task.location"
+						:value="task.location"
+						:property-string="task.location || t('tasks', 'Add location')"
+						:read-only="readOnly"
+						:task="task"
+						@set-value="({task, value}) => setLocation({ task, location: value })">
+						<template #icon>
+							<MapMarker :size="20" />
+						</template>
+					</TextItem>
+					<TextItem v-show="!readOnly || task.customUrl"
+						:value="task.customUrl"
+						:property-string="task.customUrl || t('tasks', 'Add link')"
+						:read-only="readOnly"
+						:task="task"
+						@set-value="({task, value}) => setUrl({ task, url: value })">
+						<template #icon>
+							<LinkIcon :size="20" />
+						</template>
+					</TextItem>
+					<MultiselectItem v-show="!readOnly || task.class !== 'PUBLIC'"
+						:value="classSelect.find( _ => _.type === task.class )"
+						:options="classSelect"
+						:disabled="readOnly || task.calendar.isSharedWithMe"
+						:title="task.calendar.isSharedWithMe ? t('tasks', 'Selecting a classification is forbidden, because the task was shared with you.') : null"
+						:placeholder="t('tasks', 'When shared')"
+						icon="IconEye"
+						@change-value="changeClass" />
+					<DateTimePickerItem v-show="task.completed"
+						:date="task.completedDateMoment"
+						:value="newCompletedDate"
+						:property-string="completedString"
+						:read-only="readOnly"
+						:task="task"
+						:check-overdue="false"
+						@set-value="changeCompletedDate">
+						<template #icon>
+							<CalendarCheck :size="20" />
+						</template>
+					</DateTimePickerItem>
+					<p v-if="createdString || modifiedString" class="panel-meta">
+						{{ [createdString, modifiedString].filter(Boolean).join(' · ') }}
+					</p>
+				</MoreSection>
 				<RecurrenceItem v-show="false"
 					ref="recurrence"
 					:task="task"
@@ -185,81 +265,6 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 						<Repeat :size="20" />
 					</template>
 				</RecurrenceItem>
-				<MultiselectItem v-show="!readOnly || task.class !== 'PUBLIC'"
-					:value="classSelect.find( _ => _.type === task.class )"
-					:options="classSelect"
-					:disabled="readOnly || task.calendar.isSharedWithMe"
-					:title="task.calendar.isSharedWithMe ? t('tasks', 'Selecting a classification is forbidden, because the task was shared with you.') : null"
-					:placeholder="t('tasks', 'Select a classification')"
-					icon="IconEye"
-					@change-value="changeClass" />
-				<MultiselectItem v-show="!readOnly || task.status"
-					:value="statusOptions.find( _ => _.type === task.status )"
-					:options="statusOptions"
-					:disabled="readOnly"
-					:placeholder="t('tasks', 'Select a status')"
-					icon="IconPulse"
-					@change-value="changeStatus" />
-				<DateTimePickerItem v-show="task.completed"
-					:date="task.completedDateMoment"
-					:value="newCompletedDate"
-					:property-string="completedString"
-					:read-only="readOnly"
-					:task="task"
-					:check-overdue="false"
-					@set-value="changeCompletedDate">
-					<template #icon>
-						<CalendarCheck :size="20" />
-					</template>
-				</DateTimePickerItem>
-				<SliderItem v-show="!readOnly || task.priority"
-					:value="task.priority"
-					:property-string="priorityString"
-					:read-only="readOnly"
-					:min-value="0"
-					:max-value="9"
-					:color="priorityColor"
-					:task="task"
-					@set-value="({task, value}) => setPriority({ task, priority: value })">
-					<template #icon>
-						<Star :size="20" />
-					</template>
-				</SliderItem>
-				<SliderItem v-show="!readOnly || task.complete"
-					:value="task.complete"
-					:property-string="completeString"
-					:read-only="readOnly"
-					:min-value="0"
-					:max-value="100"
-					:color="task.complete > 0 ? '#4271a6' : null"
-					:task="task"
-					@set-value="({task, value}) => setPercentComplete({ task, complete: value })">
-					<template #icon>
-						<Percent :size="20" />
-					</template>
-				</SliderItem>
-				<TextItem v-show="!readOnly || task.location"
-					:value="task.location"
-					:property-string="task.location || t('tasks', 'Set a location')"
-					:read-only="readOnly"
-					:color="task.location ? '#4271a6' : null"
-					:task="task"
-					@set-value="({task, value}) => setLocation({ task, location: value })">
-					<template #icon>
-						<MapMarker :size="20" />
-					</template>
-				</TextItem>
-				<TextItem v-show="!readOnly || task.customUrl"
-					:value="task.customUrl"
-					:property-string="task.customUrl || t('tasks', 'Set a URL')"
-					:read-only="readOnly"
-					:color="task.customUrl ? '#4271a6' : null"
-					:task="task"
-					@set-value="({task, value}) => setUrl({ task, url: value })">
-					<template #icon>
-						<Web :size="20" />
-					</template>
-				</TextItem>
 			</div>
 		</NcAppSidebarTab>
 		<NcEmptyContent v-else :description="taskStatusLabel">
@@ -297,6 +302,7 @@ import TextItem from '../components/AppSidebar/TextItem.vue'
 import NotesItem from '../components/AppSidebar/NotesItem.vue'
 import TaskCheckbox from '../components/TaskCheckbox.vue'
 import TaskPills from '../components/AppSidebar/Pills/TaskPills.vue'
+import MoreSection from '../components/AppSidebar/MoreSection.vue'
 import { mapICALAlarmsToAlarmObjects } from '../models/alarm.js'
 import Task from '../models/task.js'
 import { startDateString, dueDateString } from '../utils/dateStrings.js'
@@ -331,13 +337,15 @@ import Star from 'vue-material-design-icons/StarOutline.vue'
 import TextBoxOutline from 'vue-material-design-icons/TextBoxOutline.vue'
 import Repeat from 'vue-material-design-icons/Repeat.vue'
 import Undo from 'vue-material-design-icons/Undo.vue'
-import Web from 'vue-material-design-icons/Web.vue'
+import WeatherSunny from 'vue-material-design-icons/WeatherSunny.vue'
+import LinkIcon from 'vue-material-design-icons/Link.vue'
 
 import { mapGetters, mapActions } from 'vuex'
 
 export default {
 	components: {
 		TaskPills,
+		MoreSection,
 		NcModal,
 		NcAppSidebar,
 		NcAppSidebarTab,
@@ -366,7 +374,8 @@ export default {
 		Star,
 		TextBoxOutline,
 		Undo,
-		Web,
+		WeatherSunny,
+		LinkIcon,
 		NcEmptyContent,
 		MultiselectItem,
 		SliderItem,
@@ -661,18 +670,6 @@ export default {
 		},
 		showAllDayToggle() {
 			return !this.readOnly && (this.task.due || this.task.start || this.editingStart || this.editingDue)
-		},
-		priorityColor() {
-			if (+this.task.priority > 5) {
-				return '#4271a6'
-			}
-			if (+this.task.priority === 5) {
-				return '#fd0'
-			}
-			if (+this.task.priority > 0) {
-				return '#b3312d'
-			}
-			return null
 		},
 		priorityString() {
 			if (+this.task.priority > 5) {
@@ -969,29 +966,38 @@ export default {
 					display: flex;
 				}
 
-				// Details | Notes as a segmented control, right under the title
+				// Details | Notes as a segmented control, right under the title: a
+				// filled track, the selected segment raised, no icons, no underline
 				&__nav {
+					display: flex;
+					gap: 4px;
 					margin: 4px 12px 12px !important;
 					padding: 3px;
 					border-radius: var(--border-radius-large);
 					background-color: var(--color-background-hover);
-					gap: 4px;
+				}
 
-					.checkbox-radio-switch,
-					.checkbox-content {
-						border-radius: calc(var(--border-radius-large) - 2px) !important;
+				&__tab {
+					flex: 1 1 0;
+					min-height: 32px !important;
+					height: 32px !important;
+					margin: 0 !important;
+					padding: 0 !important;
+					border: none !important;
+					border-radius: calc(var(--border-radius-large) - 2px) !important;
+					background: none !important;
+					box-shadow: none !important;
+					color: var(--color-text-maxcontrast) !important;
+
+					&::before,
+					&::after,
+					[class*='__icon'] {
+						display: none !important;
 					}
 
-					.checkbox-content {
-						border: none !important;
-						box-shadow: none !important;
-						background: none !important;
-						color: var(--color-text-maxcontrast);
-					}
-
-					.checkbox-radio-switch--checked .checkbox-content {
+					&[aria-selected='true'] {
 						background-color: var(--color-main-background) !important;
-						color: var(--color-main-text);
+						color: var(--color-main-text) !important;
 						font-weight: bold;
 					}
 				}
@@ -1014,6 +1020,55 @@ export default {
 	> * + * {
 		border-top: 1px solid var(--color-border);
 	}
+}
+
+// Quiet fields: values in the text color, hints gray, no outlines (docs/TASK-PANEL-DESIGN.md, "Look")
+.app-sidebar-tab :deep() {
+	.property__item {
+		color: var(--color-main-text);
+	}
+
+	.more__content .property__item:not(:last-child) {
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.panel-card .property__item,
+	.more__content .property__item:last-child {
+		border-bottom: none;
+	}
+
+	.content__icon,
+	.placeholder__icon {
+		color: var(--color-text-maxcontrast);
+	}
+
+	.content__name--empty {
+		color: var(--color-text-maxcontrast);
+	}
+
+	// NcSelect (status, when shared, list): no outline, no fill, gray placeholder
+	.vs__dropdown-toggle {
+		border: none !important;
+		box-shadow: none !important;
+		outline: none !important;
+		background: transparent !important;
+	}
+
+	.vs__search {
+		border: none !important;
+		box-shadow: none !important;
+	}
+
+	.vs__search::placeholder,
+	.vs__placeholder {
+		color: var(--color-text-maxcontrast) !important;
+	}
+}
+
+.panel-meta {
+	padding: 10px 12px;
+	color: var(--color-text-maxcontrast);
+	font-size: .9em;
 }
 
 .reminder-editor {

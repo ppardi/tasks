@@ -21,16 +21,21 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 
 <template>
 	<div class="property__item" :class="{'property__item--disabled': readOnly}">
-		<input :id="id"
-			type="checkbox"
-			class="checkbox"
-			:name="id"
-			:aria-checked="checked"
-			:checked="checked"
-			:disabled="readOnly"
-			@click="$emit('setChecked', checked)">
-		<label :for="id">
-			<span>{{ propertyString }}</span>
+		<!-- A row with a switch at its end, like the rest of the panel's grouped fields -->
+		<label :for="id" class="switch-row">
+			<span class="switch-row__icon">
+				<slot name="icon" />
+			</span>
+			<span class="switch-row__label">{{ propertyString }}</span>
+			<input :id="id"
+				type="checkbox"
+				role="switch"
+				class="switch-row__switch"
+				:name="id"
+				:aria-checked="checked"
+				:checked="checked"
+				:disabled="readOnly"
+				@click="$emit('setChecked', checked)">
 		</label>
 	</div>
 </template>
@@ -62,35 +67,74 @@ export default {
 
 <style lang="scss" scoped>
 .property__item {
-	border-bottom: 1px solid var(--color-border);
-	color: var(--color-text-lighter);
-	line-height: var(--default-clickable-area);
-	cursor: pointer;
 	width: 100%;
-	padding: 0 6px;
+	color: var(--color-main-text);
+	line-height: var(--default-clickable-area);
 
 	&--disabled * {
-		cursor: default;
+		cursor: default !important;
+	}
+}
+
+.switch-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 0 12px;
+	cursor: pointer;
+
+	&__icon {
+		display: flex;
+		color: var(--color-text-maxcontrast);
 	}
 
-	input[type='checkbox'].checkbox + label {
-		display: flex;
-		width: 100%;
+	&__label {
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 
-		&::before {
-			margin: calc((var(--default-clickable-area) - 18px)/2);
-			border-width: 2px;
-			border-radius: var(--border-radius);
-			min-width: 18px;
-			min-height: 18px;
-			box-sizing: border-box;
+	// !important: Nextcloud styles every input with a min-height and padding
+	&__switch {
+		appearance: none;
+		position: relative;
+		flex: none;
+		width: 34px !important;
+		height: 20px !important;
+		min-height: 20px !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		border: none !important;
+		box-shadow: none !important;
+		border-radius: 10px;
+		background-color: var(--color-border-dark);
+		cursor: pointer;
+		transition: background-color .15s;
+
+		&::after {
+			content: '';
+			position: absolute;
+			top: 2px;
+			left: 2px;
+			width: 16px;
+			height: 16px;
+			border-radius: 50%;
+			background-color: var(--color-main-background);
+			transition: left .15s;
 		}
-		> span {
-			margin-left: 4px;
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-			cursor: pointer;
+
+		&:checked {
+			background-color: var(--color-primary-element);
+
+			&::after {
+				left: 16px;
+			}
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--color-primary-element);
+			outline-offset: 2px;
 		}
 	}
 }
