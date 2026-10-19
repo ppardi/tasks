@@ -44,6 +44,8 @@ start() {
     "$@" "$NC_IMAGE" > /dev/null
   echo "starting $name ($NC_IMAGE) on :$port…"
   wait_ready "$name" "$port"
+  # Its welcome dialog covers the page on first login and swallows input.
+  occ "$name" app:disable firstrunwizard > /dev/null 2>&1 || true
 }
 
 case "${1:-}" in
