@@ -147,8 +147,11 @@ export default class Task {
 					// Get reference date for the mapping function
 					const referenceDate = this._due || this._start
 					const jsDate = referenceDate?.toJSDate() || null
+					// The mapper reads a DateTimeValue's jsDate, day and month (1-based);
+					// given a bare Date it filled in Monday and undefined days instead.
+					const baseDate = jsDate && { jsDate, day: jsDate.getDate(), month: jsDate.getMonth() + 1 }
 
-					this._recurrenceRule = mapRecurrenceRuleValueToRecurrenceRuleObject(recurValue, jsDate)
+					this._recurrenceRule = mapRecurrenceRuleValueToRecurrenceRuleObject(recurValue, baseDate)
 					this._hasMultipleRRules = recurrenceRules.length > 1
 				} catch (e) {
 					console.warn('Failed to parse recurrence rule:', e)
