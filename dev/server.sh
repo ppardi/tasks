@@ -46,6 +46,9 @@ start() {
   wait_ready "$name" "$port"
   # Its welcome dialog covers the page on first login and swallows input.
   occ "$name" app:disable firstrunwizard > /dev/null 2>&1 || true
+  # One scripted request with bad credentials otherwise throttles every later
+  # request for minutes. Local-only instance, so nothing to protect.
+  occ "$name" config:system:set auth.bruteforce.protection.enabled --type=boolean --value=false > /dev/null
 }
 
 case "${1:-}" in

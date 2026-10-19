@@ -12,15 +12,20 @@ from the release tarball.
 | `env.sh` | Sourced, not run. Puts a Node 24 on `PATH` when the default `node` is older, since `package.json` requires `^24`. |
 | `server.sh` | A throwaway Nextcloud on `:8091` with this checkout bind-mounted as `custom_apps/tasks`. `--package <tarball>` starts a second one on `:8092` with a release installed instead; `--stop` removes both. |
 | `package-release.sh` | Cleans, builds, and packs `dev/out/tasks-<version>.tar.gz` plus its `SHA256SUMS`. |
+| `seed.sh` | Fills the dev server with an "Immediate Tasks" list shaped like Paul's: reminder-only tasks, overdue and upcoming dates, priorities, a note, tags, subtasks, a completed task. Dates are relative to today; re-running overwrites. |
 
 ## Daily loop
 
 ```
 . dev/env.sh
 dev/server.sh                 # http://localhost:8091/index.php/apps/tasks, admin/admin
+dev/seed.sh                   # once, for realistic tasks
 npm run watch                 # rebuilds js/ on save; reload the browser
 npm test                      # vitest
 ```
+
+For Paul's look, switch the dev user to the dark theme once:
+`docker exec -u www-data tasks-dev php occ user:setting admin theming enabled-themes '["dark"]'`.
 
 ## Releasing
 
@@ -39,6 +44,20 @@ replaces the build. If upstream reaches 1.0, move to `1.99.<n>`.
    it within 15 minutes.
 
 ## Things that will bite
+
+**A rebuild does not reach an open browser tab.** `tasks-main.mjs` is loaded
+as `?v=<hash>`, and the hash only changes with the app version, so the browser
+keeps the old entry file. Hard-reload, or refresh those URLs from the console:
+`await Promise.all([...document.querySelectorAll('script[src*="/tasks/"], link[href*="/tasks/"]')].map(e => fetch(e.src || e.href, {cache: 'reload'}))); location.reload()`.
+The chunks it imports are content-hashed and need nothing.
+
+**Brute-force protection is off in the dev servers**, because one scripted
+request with bad credentials throttled every request after it. Turning it off
+does not forgive attempts already recorded; if it ever reappears, delete the
+rows from `oc_bruteforce_attempts`.
+
+**Nextcloud 35 draws input outlines with `box-shadow`, not `border`.** An
+override of `border-color` alone leaves the outline in place.
 
 **Do not use `make appstore`.** It names the package after the checkout
 directory, so from `NextCloud-Tasks` it produces a `NextCloud-Tasks/` folder,
