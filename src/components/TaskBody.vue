@@ -50,7 +50,11 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 			<div class="task-body__info"
 				@dblclick="editSummary()">
 				<div class="summary">
-					<span v-linkify="{text: task.summary, linkify: true}" />
+					<span v-linkify="{text: task.summary, linkify: true}" class="summary__text" />
+					<span v-if="rowDate"
+						:class="{ 'summary__date--overdue': rowDate.overdue }"
+						:title="rowDate.title"
+						class="summary__date"><span class="summary__pipe" aria-hidden="true">|</span>{{ rowDate.text }}</span>
 				</div>
 				<div v-if="task.tags.length > 0" class="tags-list">
 					<span v-for="(tag, index) in task.tags"
@@ -82,10 +86,6 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 					:title="t('tasks', 'Task has a note')"
 					@click="openAppSidebarTab($event, 'app-sidebar-tab-notes')"
 					@dblclick.stop="openAppSidebarTab($event, 'app-sidebar-tab-notes', true)" />
-				<div v-if="task.due || task.completed" :class="{'date--overdue': overdue(task.dueMoment) && !task.completed}" class="date">
-					<span class="date__short" :class="{ 'date__short--completed': task.completed }">{{ dueDateShort }}</span>
-					<span class="date__long" :class="{ 'date__long--date-only': task.allDay && !task.completed, 'date__long--completed': task.completed }">{{ dueDateLong }}</span>
-				</div>
 				<NcProgressBar v-if="task.complete > 0"
 					type="circular"
 					:value="task.complete"
@@ -93,7 +93,7 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 					:title="t('tasks', '{complete} % completed', {complete: task.complete})"
 					:color="task.calendar.color" />
 				<Bell v-if="task.alarms.length > 0" :size="20" :title="n('tasks', 'Task has one reminder', 'Task has {n} reminders', task.alarms.length, { n: task.alarms.length })" />
-				<NcActions v-if="task.deleteCountdown === null" class="reactive no-nav" menu-align="right">
+				<NcActions v-if="task.deleteCountdown === null" class="reactive no-nav task-item__menu" menu-align="right">
 					<NcActionButton v-if="!task.calendar.readOnly"
 						:close-after-click="true"
 						class="reactive no-nav open-input"
@@ -204,6 +204,7 @@ import TaskDragContainer from './TaskDragContainer.vue'
 import Task from '../models/task.js'
 import openNewTask from '../mixins/openNewTask.js'
 import { startDateString } from '../utils/dateStrings.js'
+import { rowDate } from '../utils/rowDate.js'
 
 import { emit } from '@nextcloud/event-bus'
 import { translate as t, translatePlural as n } from '@nextcloud/l10n'
@@ -288,80 +289,14 @@ export default {
 			filter: 'filter',
 		}),
 
-		dueDateShort() {
-			if (!this.task.completed) {
-				return this.task.dueMoment.isValid()
-					? this.task.dueMoment.calendar(null, {
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						lastDay: t('tasks', '[Yesterday]'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						sameDay: t('tasks', '[Today]'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						nextDay: t('tasks', '[Tomorrow]'),
-						lastWeek: 'L',
-						nextWeek: 'L',
-						sameElse: 'L',
-					})
-					: ''
-			} else {
-				return this.task.completedDateMoment.isValid()
-					? this.task.completedDateMoment.calendar(null, {
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						lastDay: t('tasks', '[Completed yesterday]'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						sameDay: t('tasks', '[Completed today]'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						nextDay: t('tasks', '[Completed tomorrow]'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						lastWeek: '[Completed] L',
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						nextWeek: '[Completed] L',
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						sameElse: '[Completed] L',
-					})
-					: ''
-			}
-		},
-
-		dueDateLong() {
-			if (this.task.allDay) {
-				return this.dueDateShort
-			}
-			if (!this.task.completed) {
-				return this.task.dueMoment.isValid()
-					? this.task.dueMoment.calendar(null, {
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						lastDay: t('tasks', '[Yesterday at] LT'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						sameDay: t('tasks', '[Today at] LT'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						nextDay: t('tasks', '[Tomorrow at] LT'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						lastWeek: t('tasks', 'L [at] LT'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						nextWeek: t('tasks', 'L [at] LT'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						sameElse: t('tasks', 'L [at] LT'),
-					})
-					: ''
-			} else {
-				return this.task.completedDateMoment.isValid()
-					? this.task.completedDateMoment.calendar(null, {
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						lastDay: t('tasks', '[Completed yesterday at] LT'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						sameDay: t('tasks', '[Completed today at] LT'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						nextDay: t('tasks', '[Completed tomorrow at] LT'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						lastWeek: t('tasks', '[Completed] L [at] LT'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						nextWeek: t('tasks', '[Completed] L [at] LT'),
-						// TRANSLATORS This is a string for moment.js. The square brackets escape the string from moment.js. Please translate the string and keep the brackets.
-						sameElse: t('tasks', '[Completed] L [at] LT'),
-					})
-					: ''
-			}
+		/**
+		 * The short date shown after the task's name: due date, else reminder,
+		 * else completion date for completed tasks.
+		 *
+		 * @return {{text: string, title: string, overdue: boolean}|null}
+		 */
+		rowDate() {
+			return rowDate(this.task)
 		},
 
 		collectionId() {
@@ -721,28 +656,15 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-$red_overdue: #b3312d; // overdue dates and high importance
+$red_overdue: #b3312d; // high importance
 $yellow: #fd0; // medium importance
-$blue_due: #4271a6; // due dates and low importance
+$blue_due: #4271a6; // low importance
 
 // mobile breakpoint
 $breakpoint-mobile: 1024px;
 
-// Show round corners for first root task
-.grouped-tasks > ol > .task-item {
-	&:first-child > .task-item__body {
-		border-top-left-radius: var(--border-radius-large);
-		border-top-right-radius: var(--border-radius-large);
-		border-top: none;
-	}
-
-	& > .task-item__body {
-		@media only screen and (max-width: $breakpoint-mobile) {
-			border-radius: 0 !important;
-		}
-	}
-}
-
+// The list reads as plain text on the page background: no row fills, no
+// separators, no outline around the list. Only hover and the open task are tinted.
 .task-item {
 	position: relative;
 	cursor: default;
@@ -750,7 +672,7 @@ $breakpoint-mobile: 1024px;
 
 	&--closed .task-item__body .task-body__info {
 		opacity: .6;
-		.summary {
+		.summary__text {
 			text-decoration: line-through;
 		}
 	}
@@ -760,7 +682,7 @@ $breakpoint-mobile: 1024px;
 	}
 
 	&--non-started {
-		.summary {
+		.summary__text {
 			color: var(--color-text-maxcontrast);
 		}
 
@@ -775,9 +697,7 @@ $breakpoint-mobile: 1024px;
 	}
 
 	&__input {
-		border-top: 1px solid var(--color-border);
 		overflow: hidden;
-		border-radius: 0;
 
 		:deep() .input-field {
 			margin-block-start: 0 !important;
@@ -788,9 +708,17 @@ $breakpoint-mobile: 1024px;
 				--input-border-width-offset: calc(var(--border-width-input-focused, 2px) - var(--border-width-input, 2px)) !important;
 			}
 
+			// Soft filled, like the new-task field. Nextcloud 35 draws the
+			// outline with box-shadow, not border.
 			&__input {
-				border: none !important;
-				border-radius: 0;
+				border-color: transparent !important;
+				box-shadow: none !important;
+				background-color: var(--color-background-hover);
+				border-radius: var(--border-radius-large);
+			}
+
+			&__input:focus {
+				box-shadow: 0 0 0 2px var(--color-primary-element) !important;
 			}
 
 			&__icon--leading {
@@ -803,51 +731,15 @@ $breakpoint-mobile: 1024px;
 		}
 	}
 
-	// Show round corners if a task is the last in the (sub-)list
-	&:last-child .task-item__body {
-		border-bottom-left-radius: var(--border-radius-large);
-		border-bottom-right-radius: var(--border-radius-large);
-	}
-
-	&:not(.task-item--subtasks-visible) .task-item__input {
-		border-bottom-left-radius: var(--border-radius-large);
-		border-bottom-right-radius: var(--border-radius-large);
-	}
-
-	// Don't show round corners if any of the ancestors is not the last in the (sub-)list
-	&:not(:last-child) {
-		.task-item__input {
-			border-bottom-left-radius: 0;
-			border-bottom-right-radius: 0;
-		}
-		.task-item__body {
-			border-bottom-left-radius: 0;
-			border-bottom-right-radius: 0;
-		}
-	}
-
-	// If the subtasks container is visible, show a round corner for the task itself and
-	// the next task in the list
-	&.task-item--input-visible {
-		& > .task-item__body {
-			border-bottom-left-radius: var(--border-radius-large);
-			border-bottom-right-radius: 0;
-		}
-
-		& + .task-item > .task-item__body {
-			border-top-left-radius: var(--border-radius-large);
-		}
-	}
-
 	&__body {
 		display: flex;
 		flex-direction: row;
 		flex-wrap: nowrap;
-		align-items: center;
-		height: var(--default-clickable-area);
+		// Top-aligned so a name that wraps keeps its checkbox and icons on the first line
+		align-items: flex-start;
+		min-height: var(--default-clickable-area);
 		position: relative;
-		background-color: var(--color-main-background);
-		border-top: 1px solid var(--color-border);
+		border-radius: var(--border-radius-large);
 
 		&:hover {
 			background-color: var(--color-background-hover);
@@ -864,25 +756,25 @@ $breakpoint-mobile: 1024px;
 		.task-body {
 			&__info {
 				display: flex;
+				align-items: flex-start;
 				flex-grow: 1;
+				min-width: 0;
 				cursor: pointer;
 				color: var(--color-main-text);
-				line-height: 16px;
 				margin: 0;
-				overflow: hidden;
 				position: relative;
-				white-space: nowrap;
 
 				.summary {
 					cursor: text;
-					display: inline-flex;
-					overflow: hidden;
+					// The name gets the room; tags shrink and truncate first
+					flex: 1 1 auto;
+					min-width: 0;
+					// Centers a single line on the 44px row, and lets longer names wrap
+					padding-block: calc((var(--default-clickable-area) - 20px) / 2);
+					line-height: 20px;
+					overflow-wrap: anywhere;
 
-					span {
-						line-height: var(--default-clickable-area);
-						overflow: hidden;
-						text-overflow: ellipsis;
-
+					&__text {
 						// We need deep as it comes from a directive
 						:deep(a) {
 							cursor: pointer;
@@ -890,12 +782,32 @@ $breakpoint-mobile: 1024px;
 							margin: 0;
 						}
 					}
+
+					&__date {
+						color: var(--color-text-maxcontrast);
+						font-size: .93em;
+						white-space: nowrap;
+
+						&--overdue {
+							color: var(--color-text-error);
+						}
+					}
+
+					&__pipe {
+						color: var(--color-text-maxcontrast);
+						opacity: .5;
+						margin-inline: 8px;
+					}
 				}
 
 				.tags-list {
 					display: flex;
+					// Natural width up to 40% of the row; the name keeps the rest
+					flex: 0 0 auto;
 					align-items: center;
-					max-width: 50%;
+					max-width: 40%;
+					margin-top: calc((var(--default-clickable-area) - 28px) / 2);
+					overflow: hidden;
 
 					.tag {
 						height: 28px;
@@ -924,7 +836,10 @@ $breakpoint-mobile: 1024px;
 			&__icons {
 				align-items: center;
 				display: flex;
+				flex-shrink: 0;
+				height: var(--default-clickable-area);
 				margin-left: auto;
+				color: var(--color-text-maxcontrast);
 
 				& > div:not(.action-item) {
 					height: 44px;
@@ -936,7 +851,7 @@ $breakpoint-mobile: 1024px;
 				}
 
 				& > .material-design-icon {
-					opacity: .5;
+					opacity: .7;
 					margin-inline: 4px;
 
 					&.text-box-outline-icon {
@@ -952,6 +867,17 @@ $breakpoint-mobile: 1024px;
 					}
 				}
 
+				// The star and the "⋯" menu: quiet gray until hovered
+				.action-item--single:not(.priority),
+				:deep(.action-item__menutoggle) {
+					color: var(--color-text-maxcontrast);
+
+					&:hover {
+						color: var(--color-main-text);
+					}
+				}
+
+				// The star, once set, in its priority color
 				.action-item.priority {
 					opacity: 1;
 
@@ -968,56 +894,8 @@ $breakpoint-mobile: 1024px;
 					}
 				}
 
-				.date {
-					color: $blue_due;
-					font-size: 11px;
-					line-height: 14px;
-
-					&--overdue {
-						color: $red_overdue;
-					}
-
-					span {
-						overflow: hidden;
-						text-align: right;
-						text-overflow: ellipsis;
-						white-space: nowrap;
-					}
-
-					&__short {
-						width: 60px;
-
-						&--completed {
-							width: 110px;
-						}
-					}
-
-					&__long {
-						width: 105px;
-						display: none;
-
-						&--date-only {
-							width: 60px;
-						}
-
-						&--completed {
-							width: 150px;
-						}
-					}
-
-					@media only screen and (min-width: $breakpoint-mobile) {
-						&__long {
-							display: inline-block;
-						}
-
-						&__short {
-							display: none;
-						}
-					}
-				}
-
 				.calendar {
-					color: var(--color-text-lighter);
+					color: var(--color-text-maxcontrast);
 					font-size: 11px;
 					line-height: 14px;
 					white-space: nowrap;
@@ -1039,6 +917,24 @@ $breakpoint-mobile: 1024px;
 					}
 				}
 			}
+		}
+	}
+
+	// The "⋯" menu appears on hover, on keyboard focus and while it is open.
+	// Devices without hover always show it.
+	&__menu {
+		opacity: 0;
+	}
+
+	&__body:hover &__menu,
+	&__body:focus-within &__menu,
+	&__menu:has([aria-expanded='true']) {
+		opacity: 1;
+	}
+
+	@media (hover: none) {
+		&__menu {
+			opacity: 1;
 		}
 	}
 

@@ -131,6 +131,8 @@ $blue_due: #4271a6; // due dates and low importance
 			height: var(--default-clickable-area);
 			width: var(--default-clickable-area);
 			justify-content: center;
+			// Quiet gray until hovered, like the rest of the row's controls
+			color: var(--color-text-maxcontrast);
 
 			.material-design-icon {
 				cursor: pointer;
@@ -139,7 +141,7 @@ $blue_due: #4271a6; // due dates and low importance
 			}
 
 			&:hover {
-				border-color: var(--color-border-dark);
+				color: var(--color-main-text);
 			}
 
 			&.priority {

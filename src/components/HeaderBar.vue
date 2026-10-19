@@ -21,12 +21,20 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 
 <template>
 	<div class="header">
+		<div class="header__top">
+			<h2 v-if="title" class="header__title" :style="titleStyle">
+				{{ title }}
+			</h2>
+			<FilterDropdown />
+			<SortorderDropdown />
+		</div>
 		<div v-if="$route.params.collectionId !== 'completed' && calendar && !calendar.readOnly"
 			class="header__input">
 			<NcTextField ref="input"
 				v-model="newTaskName"
-				:label="placeholder"
-				:placeholder="placeholder"
+				:placeholder="fieldPlaceholder"
+				:aria-label="placeholder"
+				:label-outside="true"
 				autocomplete="off"
 				class="reactive"
 				trailing-button-icon="arrowEnd"
@@ -43,8 +51,6 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 				</template>
 			</NcTextField>
 		</div>
-		<FilterDropdown />
-		<SortorderDropdown />
 		<CreateMultipleTasksDialog v-if="showCreateMultipleTasksModal"
 			:calendar="calendar"
 			:tasks-to-create="multipleTasks"
@@ -65,7 +71,7 @@ import NcTextField from '@nextcloud/vue/components/NcTextField'
 
 import Plus from 'vue-material-design-icons/Plus.vue'
 
-import { mapGetters, mapActions } from 'vuex'
+import { mapGetters, mapActions, mapState } from 'vuex'
 
 import { textToTask } from '../utils/textToTask.js'
 import CreateMultipleTasksDialog from './CreateMultipleTasksDialog.vue'
@@ -95,6 +101,44 @@ export default {
 		...mapGetters({
 			getCalendarByRoute: 'getCalendarByRoute',
 		}),
+		...mapState({
+			collections: state => state.collections.collections,
+		}),
+
+		/**
+		 * The page title: the list's name in a list, the collection's name in a collection.
+		 *
+		 * @return {string}
+		 */
+		title() {
+			if (this.$route.params.calendarId) {
+				return this.calendar?.displayName ?? ''
+			}
+			const collection = this.collections.find(c => c.id === this.$route.params.collectionId)
+			return collection?.displayName ?? ''
+		},
+
+		/**
+		 * A list's title takes the list's color, as in Apple Reminders.
+		 *
+		 * @return {object}
+		 */
+		titleStyle() {
+			if (this.$route.params.calendarId && this.calendar?.color) {
+				return { color: this.calendar.color }
+			}
+			return {}
+		},
+
+		/**
+		 * In a list the title already says where the task goes, so the field just
+		 * says "New task". In a collection the full sentence names the target list.
+		 *
+		 * @return {string}
+		 */
+		fieldPlaceholder() {
+			return this.$route.params.calendarId ? t('tasks', 'New task') : this.placeholder
+		},
 
 		placeholder() {
 			switch (this.$route.params.collectionId) {
@@ -205,12 +249,11 @@ export default {
 $breakpoint-mobile: 1024px;
 
 .header {
-	padding: calc(2* var(--default-grid-baseline));
+	padding: calc(2 * var(--default-grid-baseline));
 	padding-left: calc(4 * var(--default-grid-baseline) + var(--default-clickable-area)); // leave space for the app-nav-toggle
 	position: sticky;
-	background-color: var(--color-background-dark);
+	background-color: var(--color-main-background);
 	z-index: 1000;
-	display: flex;
 	top: 0;
 
 	@media only screen and (max-width: $breakpoint-mobile) {
@@ -218,18 +261,49 @@ $breakpoint-mobile: 1024px;
 		padding-left: calc(2 * var(--default-grid-baseline) + var(--default-clickable-area));
 	}
 
-	&__input {
-		position: relative;
-		width: 100%;
-		margin-right: calc(2 * var(--default-grid-baseline));
+	&__top {
+		display: flex;
+		align-items: center;
+		min-height: var(--default-clickable-area);
 
-		.input-field {
-			margin-block-start: 0 !important;
+		.filter {
+			margin-left: auto;
 		}
 	}
 
-	.filter {
-		margin-left: auto;
+	&__title {
+		flex: 1 1 auto;
+		min-width: 0;
+		margin: 0;
+		font-size: 26px;
+		font-weight: bold;
+		line-height: var(--default-clickable-area);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	&__input {
+		position: relative;
+		margin-top: calc(2 * var(--default-grid-baseline));
+		margin-right: calc(2 * var(--default-grid-baseline));
+
+		:deep(.input-field) {
+			margin-block-start: 0 !important;
+
+			.input-field__input {
+				// A soft filled field instead of the bright outline. Nextcloud 35 draws
+				// the outline with box-shadow, not border.
+				border-color: transparent !important;
+				box-shadow: none !important;
+				background-color: var(--color-background-hover);
+				border-radius: var(--border-radius-large);
+
+				&:focus {
+					box-shadow: 0 0 0 2px var(--color-primary-element) !important;
+				}
+			}
+		}
 	}
 }
 </style>

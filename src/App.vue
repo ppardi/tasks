@@ -166,7 +166,8 @@ body {
 .app-content {
 	// Adjustment necessary to use nc/vue@6 with NC25
 	overflow-y: scroll;
-	background-color: var(--color-background-dark) !important;
+	// One background for the whole page; the task rows sit on it with no fill of their own
+	background-color: var(--color-main-background) !important;
 
 	> div {
 		box-sizing: border-box;
