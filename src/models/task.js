@@ -94,6 +94,10 @@ export default class Task {
 		// Define components
 		this._alarms = this.getAlarms()
 
+		// Display-only, never saved: a just-completed task stays in the open
+		// list for a few seconds, as in Apple Reminders.
+		this._lingering = false
+
 		// Define properties, so Vue reacts to changes of them
 		this._uid = this.vtodo.getFirstPropertyValue('uid') || ''
 		this._summary = this.vtodo.getFirstPropertyValue('summary') || ''
@@ -298,6 +302,29 @@ export default class Task {
 
 	get closed() {
 		return this.completed || this._status === 'CANCELLED'
+	}
+
+	/**
+	 * Whether a just-completed task is still being shown among the open tasks
+	 *
+	 * @return {boolean}
+	 */
+	get lingering() {
+		return this._lingering
+	}
+
+	set lingering(lingering) {
+		this._lingering = lingering
+	}
+
+	/**
+	 * Whether the task is listed with the closed tasks. A just-completed task
+	 * stays listed as open until its moment has passed.
+	 *
+	 * @return {boolean}
+	 */
+	get listedAsClosed() {
+		return this.closed && !this._lingering
 	}
 
 	get complete() {

@@ -38,6 +38,44 @@ import ICAL from 'ical.js'
 import { randomUUID } from '../utils/crypto.js'
 
 /**
+ * How long a just-completed task stays in the open list before it moves to the
+ * completed ones, as in Apple Reminders: long enough to see what was checked off
+ * and to undo a slip.
+ */
+export const LINGER_MS = 5000
+const lingerTimers = new Map()
+
+/**
+ * Keeps a just-completed task in the open list for LINGER_MS. Completing it
+ * again restarts the wait.
+ *
+ * @param {object} context The store context
+ * @param {Task} task The task that was completed
+ */
+function startLingering(context, task) {
+	clearTimeout(lingerTimers.get(task.uid))
+	context.commit('setLingering', { task, lingering: true })
+	lingerTimers.set(task.uid, setTimeout(() => {
+		lingerTimers.delete(task.uid)
+		context.commit('setLingering', { task, lingering: false })
+	}, LINGER_MS))
+}
+
+/**
+ * Ends a task's wait at once, e.g. when it is unchecked during it.
+ *
+ * @param {object} context The store context
+ * @param {Task} task The task
+ */
+function stopLingering(context, task) {
+	clearTimeout(lingerTimers.get(task.uid))
+	lingerTimers.delete(task.uid)
+	if (task.lingering) {
+		context.commit('setLingering', { task, lingering: false })
+	}
+}
+
+/**
  * Clone an ICAL.Time without triggering timezone lookups.
  * ical.js may not have all timezones registered, causing errors when
  * clone() tries to resolve timezone components.
@@ -257,7 +295,7 @@ const getters = {
 				 * If it has, then check if the parent task is available
 				 * (otherwise it might happen, that this task is not shown at all)
 				 */
-				return (!task.related || !isParentInList(task, tasks)) && task.closed
+				return (!task.related || !isParentInList(task, tasks)) && task.listedAsClosed
 			})
 		},
 
@@ -278,7 +316,7 @@ const getters = {
 				 * If it has, then check if the parent task is available
 				 * (otherwise it might happen, that this task is not shown at all)
 				 */
-				return (!task.related || !isParentInList(task, tasks)) && !task.closed
+				return (!task.related || !isParentInList(task, tasks)) && !task.listedAsClosed
 			})
 		},
 
@@ -412,6 +450,18 @@ const mutations = {
 		if (task.related && parent) {
 			parent.subTasks[task.uid] = task
 		}
+	},
+
+	/**
+	 * Sets whether a just-completed task is still shown with the open tasks
+	 *
+	 * @param {object} state The store data
+	 * @param {object} data Destructuring object
+	 * @param {Task} data.task The task
+	 * @param {boolean} data.lingering Whether it stays listed as open
+	 */
+	setLingering(state, { task, lingering }) {
+		task.lingering = lingering
 	},
 
 	/**
@@ -1273,6 +1323,12 @@ const actions = {
 				await context.dispatch('handleRecurringTaskCompletion', { task })
 				return // The handler will update the task
 			}
+		}
+		// Before the change is committed, so the row never blinks out of the list
+		if (complete === 100) {
+			startLingering(context, task)
+		} else {
+			stopLingering(context, task)
 		}
 		context.commit('setComplete', { task, complete })
 		context.dispatch('updateTask', task)

@@ -45,20 +45,20 @@ function isTaskInList(task, listId, checkSubtasks = true) {
 	const day = parts[1] ? parts[1] : null
 	switch (listId) {
 	case 'completed':
-		return task.closed
+		return task.listedAsClosed
 	case 'all':
-		return !task.closed
+		return !task.listedAsClosed
 	case 'current':
-		return !task.closed && testTask(task, isTaskCurrent, checkSubtasks)
+		return !task.listedAsClosed && testTask(task, isTaskCurrent, checkSubtasks)
 	case 'starred':
-		return !task.closed && testTask(task, isTaskPriority, checkSubtasks)
+		return !task.listedAsClosed && testTask(task, isTaskPriority, checkSubtasks)
 	case 'today':
-		return !task.closed && testTask(task, isTaskToday, checkSubtasks)
+		return !task.listedAsClosed && testTask(task, isTaskToday, checkSubtasks)
 	case 'week':
 		if (!day) {
-			return !task.closed && testTask(task, isTaskWeek, checkSubtasks)
+			return !task.listedAsClosed && testTask(task, isTaskWeek, checkSubtasks)
 		} else {
-			return !task.closed && testTask(task, (task) => isTaskDay(task, parseInt(day)), checkSubtasks)
+			return !task.listedAsClosed && testTask(task, (task) => isTaskDay(task, parseInt(day)), checkSubtasks)
 		}
 	default:
 		return '' + task.calendar.id === '' + listId
@@ -74,7 +74,7 @@ function isTaskInList(task, listId, checkSubtasks = true) {
  * @return {boolean}
  */
 function testTask(task, testFunction, checkSubtasks = false) {
-	if (!task.closed && testFunction(task)) {
+	if (!task.listedAsClosed && testFunction(task)) {
 		return true
 	}
 	if (checkSubtasks) {
@@ -309,7 +309,9 @@ function sortByPinned(taskA, taskB) {
  * @return {number}
  */
 function sortByCompleted(taskA, taskB) {
-	return taskA.completed - taskB.completed
+	// A just-completed task keeps its place while it lingers in the open list
+	const completed = task => task.completed && !task.lingering
+	return completed(taskA) - completed(taskB)
 }
 
 /**

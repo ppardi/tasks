@@ -357,7 +357,7 @@ export default {
 			let subTasks = Object.values(this.task.subTasks)
 			if (this.task.hideCompletedSubtasks) {
 				subTasks = subTasks.filter(task => {
-					return !task.closed
+					return !task.listedAsClosed
 				})
 			}
 			if (['today', 'week', 'starred', 'current'].indexOf(this.collectionId) > -1
