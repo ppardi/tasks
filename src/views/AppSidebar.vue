@@ -24,7 +24,6 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 		:name="summary"
 		:name-editable="editingSummary"
 		:linkify-name="true"
-		:subname="subsummary"
 		:title="summary"
 		:subtitle="subsummaryTooltip"
 		:empty="!task"
@@ -33,50 +32,11 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 		@update:name="updateSummary"
 		@submit-name="saveSummary()"
 		@close="closeAppSidebar()">
-		<template v-if="task" #description>
-			<DateTimePickerItem v-show="!readOnly || task.start"
-				:date="task.startMoment"
-				:value="newStartDate"
-				:all-day="allDay"
-				:property-string="startDateString"
-				:read-only="readOnly"
-				:task="task"
-				@editing="(editing) => editingStart = editing"
-				@set-value="setStartDate">
-				<template #icon>
-					<CalendarStart :size="20" />
-				</template>
-			</DateTimePickerItem>
-			<DateTimePickerItem v-show="!readOnly || task.due"
-				:date="task.dueMoment"
-				:value="newDueDate"
-				:all-day="allDay"
-				:property-string="dueDateString"
-				:read-only="readOnly"
-				:task="task"
-				@editing="(editing) => editingDue = editing"
-				@set-value="setDueDate">
-				<template #icon>
-					<CalendarEnd :size="20" />
-				</template>
-			</DateTimePickerItem>
-			<CheckboxItem v-show="showAllDayToggle"
-				id="allDayToggle"
-				:checked="allDay"
-				:read-only="readOnly"
-				:property-string="t('tasks', 'All day')"
-				@set-checked="toggleAllDay(task)" />
-			<RecurrenceItem v-show="(task.start || task.due) && (!readOnly || task.isRecurring)"
-				:task="task"
-				:read-only="readOnly">
-				<template #icon>
-					<Repeat :size="20" />
-				</template>
-			</RecurrenceItem>
-			<CalendarPickerItem :disabled="readOnly"
-				:calendar="task.calendar"
-				:calendars="targetCalendars"
-				@change-calendar="changeCalendar" />
+		<template v-if="task" #subname>
+			<span class="task-list-name" :title="subsummaryTooltip">
+				<span class="task-list-name__dot" :style="{ backgroundColor: task.calendar.color }" />
+				{{ task.calendar.displayName }}
+			</span>
 		</template>
 
 		<template v-if="!task || (task && task.deleteCountdown === null)" #secondary-actions>
@@ -165,6 +125,40 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 				<InformationOutline :size="20" />
 			</template>
 			<div>
+				<TaskPills :task="task" :read-only="readOnly" />
+				<div class="panel-card">
+					<CheckboxItem v-show="showAllDayToggle"
+						id="allDayToggle"
+						:checked="allDay"
+						:read-only="readOnly"
+						:property-string="t('tasks', 'All day')"
+						@set-checked="toggleAllDay(task)" />
+					<CalendarPickerItem :disabled="readOnly"
+						:calendar="task.calendar"
+						:calendars="targetCalendars"
+						@change-calendar="changeCalendar" />
+				</div>
+				<DateTimePickerItem v-show="!readOnly || task.start"
+					:date="task.startMoment"
+					:value="newStartDate"
+					:all-day="allDay"
+					:property-string="startDateString"
+					:read-only="readOnly"
+					:task="task"
+					@editing="(editing) => editingStart = editing"
+					@set-value="setStartDate">
+					<template #icon>
+						<CalendarStart :size="20" />
+					</template>
+				</DateTimePickerItem>
+				<RecurrenceItem v-show="false"
+					ref="recurrence"
+					:task="task"
+					:read-only="readOnly">
+					<template #icon>
+						<Repeat :size="20" />
+					</template>
+				</RecurrenceItem>
 				<MultiselectItem v-show="!readOnly || task.class !== 'PUBLIC'"
 					:value="classSelect.find( _ => _.type === task.class )"
 					:options="classSelect"
@@ -298,6 +292,7 @@ import TagsItem from '../components/AppSidebar/TagsItem.vue'
 import TextItem from '../components/AppSidebar/TextItem.vue'
 import NotesItem from '../components/AppSidebar/NotesItem.vue'
 import TaskCheckbox from '../components/TaskCheckbox.vue'
+import TaskPills from '../components/AppSidebar/Pills/TaskPills.vue'
 import { mapICALAlarmsToAlarmObjects } from '../models/alarm.js'
 import Task from '../models/task.js'
 import { startDateString, dueDateString } from '../utils/dateStrings.js'
@@ -316,7 +311,6 @@ import { generateUrl } from '@nextcloud/router'
 import Bell from 'vue-material-design-icons/BellOutline.vue'
 import Calendar from 'vue-material-design-icons/Calendar.vue'
 import CalendarCheck from 'vue-material-design-icons/CalendarCheck.vue'
-import CalendarEnd from 'vue-material-design-icons/CalendarEnd.vue'
 import CalendarStart from 'vue-material-design-icons/CalendarStart.vue'
 import ContentDuplicate from 'vue-material-design-icons/ContentDuplicate.vue'
 import Delete from 'vue-material-design-icons/TrashCanOutline.vue'
@@ -338,6 +332,7 @@ import { mapGetters, mapActions } from 'vuex'
 
 export default {
 	components: {
+		TaskPills,
 		NcAppSidebar,
 		NcAppSidebarTab,
 		NcActionButton,
@@ -349,7 +344,6 @@ export default {
 		RecurrenceItem,
 		Bell,
 		Calendar,
-		CalendarEnd,
 		CalendarStart,
 		CalendarCheck,
 		ContentDuplicate,
@@ -985,8 +979,64 @@ export default {
 				&__content {
 					display: flex;
 				}
+
+				// Details | Notes as a segmented control, right under the title
+				&__nav {
+					margin: 4px 12px 12px !important;
+					padding: 3px;
+					border-radius: var(--border-radius-large);
+					background-color: var(--color-background-hover);
+					gap: 4px;
+
+					.checkbox-radio-switch,
+					.checkbox-content {
+						border-radius: calc(var(--border-radius-large) - 2px) !important;
+					}
+
+					.checkbox-content {
+						border: none !important;
+						box-shadow: none !important;
+						background: none !important;
+						color: var(--color-text-maxcontrast);
+					}
+
+					.checkbox-radio-switch--checked .checkbox-content {
+						background-color: var(--color-main-background) !important;
+						color: var(--color-main-text);
+						font-weight: bold;
+					}
+				}
 			}
 		}
+	}
+}
+
+.app-sidebar-tab > div {
+	width: 100%;
+	padding: 0 12px;
+}
+
+// All day and List, grouped
+.panel-card {
+	margin-bottom: 10px;
+	border-radius: var(--border-radius-large);
+	background-color: var(--color-background-hover);
+
+	> * + * {
+		border-top: 1px solid var(--color-border);
+	}
+}
+
+.task-list-name {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+
+	&__dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		flex: none;
 	}
 }
 </style>
