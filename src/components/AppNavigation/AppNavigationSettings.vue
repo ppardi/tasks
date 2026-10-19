@@ -35,6 +35,16 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 						</option>
 					</select>
 				</li>
+				<li class="rollover">
+					<NcCheckboxRadioSwitch type="switch"
+						:model-value="rollover"
+						@update:model-value="setRollover">
+						{{ t('tasks', 'Roll over unfinished tasks') }}
+					</NcCheckboxRadioSwitch>
+					<p class="rollover__hint">
+						{{ t('tasks', 'Tasks not done by the end of their day move to the next day, reminders included.') }}
+					</p>
+				</li>
 				<li class="headline">
 					{{ t('tasks', 'Visibility of Smart Collections') }}
 				</li>
@@ -66,6 +76,7 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 import { translate as t } from '@nextcloud/l10n'
 import moment from '@nextcloud/moment'
 import NcAppNavigationSettings from '@nextcloud/vue/components/NcAppNavigationSettings'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 
 import CalendarToday from 'vue-material-design-icons/CalendarToday.vue'
 import CalendarWeek from 'vue-material-design-icons/CalendarWeek.vue'
@@ -79,6 +90,7 @@ import { mapState, mapGetters, mapActions } from 'vuex'
 export default {
 	components: {
 		NcAppNavigationSettings,
+		NcCheckboxRadioSwitch,
 		CalendarToday,
 		CalendarWeek,
 		CircleOutline,
@@ -119,6 +131,10 @@ export default {
 				this.$store.dispatch('setSetting', { type: 'defaultCalendarId', value })
 			},
 		},
+		// Rollover is on unless the user turned it off (docs/ROLLOVER-DESIGN.md)
+		rollover() {
+			return this.$store.state.settings.settings.rollover !== false
+		},
 		...mapState({
 			collections: state => state.collections.collections,
 		}),
@@ -132,11 +148,23 @@ export default {
 		...mapActions([
 			'setVisibility',
 		]),
+
+		setRollover(on) {
+			// Stored as various_rollover: '1' on, '0' off; the nightly job reads it
+			this.$store.dispatch('setSetting', { type: 'rollover', value: on ? 1 : 0 })
+		},
 	},
 }
 </script>
 
 <style lang="scss" scoped>
+.rollover__hint {
+	margin: 0 0 8px 44px;
+	color: var(--color-text-maxcontrast);
+	font-size: .9em;
+	line-height: 1.3;
+}
+
 li {
 	display: flex;
 	align-items: center;

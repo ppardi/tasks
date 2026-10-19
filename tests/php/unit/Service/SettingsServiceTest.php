@@ -63,6 +63,7 @@ class SettingsServiceTest extends TestCase {
 			'sortDirection' => false,
 			'allDay' => false,
 			'initialRoute' => '/collections/all',
+			'rollover' => true,
 			'calendarEnabled' => true,
 			'showTasks' => true,
 			'calendarView' => 'dayGridMonth'
@@ -110,6 +111,13 @@ class SettingsServiceTest extends TestCase {
 				'various_initialRoute',
 				'/collections/all',
 				'/collections/all'
+			],
+			[
+				$this->userId,
+				$this->appName,
+				'various_rollover',
+				'1',
+				'1'
 			],
 			[
 				$this->userId,

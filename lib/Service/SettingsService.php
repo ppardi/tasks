@@ -70,6 +70,8 @@ class SettingsService {
 		$sortDirection = (bool)$this->config->getUserValue($this->userId, $this->appName, 'various_sortDirection', false);
 		$allDay = (bool)$this->config->getUserValue($this->userId, $this->appName, 'various_allDay', false);
 		$initialRoute = (string)$this->config->getUserValue($this->userId, $this->appName, 'various_initialRoute', '/collections/all');
+		// On unless turned off; the nightly rollover job reads the same value
+		$rollover = $this->config->getUserValue($this->userId, $this->appName, 'various_rollover', '1') !== '0';
 
 		$calendarEnabled = $this->appManager->isEnabledForUser('calendar');
 		$defaultInitialView = $this->config->getAppValue('calendar', 'currentView', 'dayGridMonth');
@@ -84,6 +86,7 @@ class SettingsService {
 			'sortDirection' => $sortDirection,
 			'allDay' => $allDay,
 			'initialRoute' => $initialRoute,
+			'rollover' => $rollover,
 			'calendarEnabled' => $calendarEnabled,
 			'showTasks' => $showTasks,
 			'calendarView' => $calendarView
