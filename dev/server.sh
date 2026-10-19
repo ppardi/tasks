@@ -15,12 +15,20 @@
 # version bump in appinfo/info.xml needs `occ upgrade`, which this runs.
 #
 # The image is pinned to the Nextcloud Paul's server runs; change NC_IMAGE when
-# the server moves. SQLite, admin/admin: never expose it beyond localhost.
+# the server moves. admin/admin: never expose it beyond localhost.
+#
+# The dev server uses SQLite, which is quick but takes one write at a time: two
+# tasks saved together (a subtask and the parent it completes) can fail with
+# "database is locked". The --package server uses PostgreSQL, as AIO does, so a
+# release is proved against the database it will really run on.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 NC_IMAGE="${NC_IMAGE:-nextcloud:35.0.0-apache}"
 DEV=tasks-dev
 PKG=tasks-pkg
+PKG_DB=tasks-pkg-db
+PKG_NET=tasks-pkg-net
+PG_IMAGE="${PG_IMAGE:-postgres:17-alpine}"
 
 occ() { docker exec -u www-data "$1" php occ "${@:2}"; }
 
@@ -39,7 +47,7 @@ start() {
   fi
   docker rm -f "$name" > /dev/null 2>&1 || true
   docker run -d --name "$name" -p "127.0.0.1:$port:80" \
-    -e SQLITE_DATABASE=nextcloud -e NEXTCLOUD_ADMIN_USER=admin \
+    -e NEXTCLOUD_ADMIN_USER=admin \
     -e NEXTCLOUD_ADMIN_PASSWORD=admin -e "NEXTCLOUD_TRUSTED_DOMAINS=localhost" \
     "$@" "$NC_IMAGE" > /dev/null
   echo "starting $name ($NC_IMAGE) on :$port…"
@@ -53,11 +61,22 @@ start() {
 
 case "${1:-}" in
   --stop)
-    docker rm -f "$DEV" "$PKG" 2>/dev/null || true
+    docker rm -f "$DEV" "$PKG" "$PKG_DB" 2>/dev/null || true
+    docker network rm "$PKG_NET" > /dev/null 2>&1 || true
     ;;
   --package)
     TARBALL="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
-    start "$PKG" 8092
+    docker network inspect "$PKG_NET" > /dev/null 2>&1 || docker network create "$PKG_NET" > /dev/null
+    if ! docker ps --format '{{.Names}}' | grep -qx "$PKG_DB"; then
+      docker rm -f "$PKG_DB" > /dev/null 2>&1 || true
+      docker run -d --name "$PKG_DB" --network "$PKG_NET" \
+        -e POSTGRES_DB=nextcloud -e POSTGRES_USER=nextcloud -e POSTGRES_PASSWORD=nextcloud \
+        "$PG_IMAGE" > /dev/null
+      until docker exec "$PKG_DB" pg_isready -U nextcloud > /dev/null 2>&1; do sleep 1; done
+    fi
+    start "$PKG" 8092 --network "$PKG_NET" \
+      -e POSTGRES_HOST="$PKG_DB" -e POSTGRES_DB=nextcloud \
+      -e POSTGRES_USER=nextcloud -e POSTGRES_PASSWORD=nextcloud
     docker exec "$PKG" rm -rf /var/www/html/custom_apps/tasks
     docker exec -i "$PKG" tar -xz -C /var/www/html/custom_apps < "$TARBALL"
     docker exec "$PKG" chown -R www-data:www-data /var/www/html/custom_apps/tasks
@@ -70,7 +89,7 @@ case "${1:-}" in
     echo "http://localhost:8092/index.php/apps/tasks  (admin/admin)"
     ;;
   "")
-    start "$DEV" 8091 -v "$REPO:/var/www/html/custom_apps/tasks"
+    start "$DEV" 8091 -e SQLITE_DATABASE=nextcloud -v "$REPO:/var/www/html/custom_apps/tasks"
     occ "$DEV" upgrade > /dev/null 2>&1 || true
     occ "$DEV" app:enable tasks > /dev/null
     occ "$DEV" app:list --output=json | python3 -c \
