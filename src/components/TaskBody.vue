@@ -85,7 +85,8 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 					:title="t('tasks', 'Task has a note')"
 					@click="openAppSidebarTab($event, 'app-sidebar-tab-notes')"
 					@dblclick.stop="openAppSidebarTab($event, 'app-sidebar-tab-notes', true)" />
-				<NcProgressBar v-if="task.complete > 0"
+				<!-- Not on completed tasks: the checked box already says 100 % -->
+				<NcProgressBar v-if="task.complete > 0 && !task.completed"
 					type="circular"
 					:value="task.complete"
 					:aria-label="t('tasks', '{complete} % completed', {complete: task.complete})"
@@ -669,11 +670,9 @@ $breakpoint-mobile: 1024px;
 	cursor: default;
 	list-style: none outside none;
 
+	// Completed: lighter, not struck through; the checked box already says it is done
 	&--closed .task-item__body .task-body__info {
 		opacity: .6;
-		.summary__text {
-			text-decoration: line-through;
-		}
 	}
 
 	&--deleted .task-body__info {
