@@ -53,7 +53,7 @@ for p in .github .babelrc .babelrc.js .codecov.yml .editorconfig .eslintrc.cjs \
          .stylelintignore .stylelintrc .travis.yml .tx babel.config.cjs build.xml \
          clover.integration.xml clover.unit.xml composer.json composer.lock composer.phar \
          CONTRIBUTING.md issue_template.md gulpfile.js Makefile package-lock.json \
-         package.json phpunit.xml phpunit.integration.xml README.md stylelint.config.js \
+         package.json phpunit.xml phpunit.integration.xml phpunit.rollover.xml README.md stylelint.config.js \
          vite.config.mjs build coverage img/src src node_modules screenshots test tests \
          vendor dev; do
   rm -rf "$p"

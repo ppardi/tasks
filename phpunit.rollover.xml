@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  - SPDX-FileCopyrightText: 2026 ppardi <6176270+ppardi@users.noreply.github.com>
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+  -
+  - The fork's PHP tests: plain unit tests over sabre/vobject, no Nextcloud
+  - test checkout needed. Run with dev/php-tests.sh.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         bootstrap="tests/php/rollover/bootstrap.php"
+         colors="true"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.3/phpunit.xsd">
+  <testsuite name="Tasks fork">
+    <directory>./tests/php/rollover</directory>
+  </testsuite>
+</phpunit>
