@@ -68,16 +68,46 @@ describe('createParseRequester', () => {
 		expect(requester.current.value.title).toBe('MILK TOMORROW')
 	})
 
-	it('says whether its answer is for the given text and ignore list', async () => {
+	it('keeps the newest answer while a newer request is pending', async () => {
 		const { request, calls } = fakeEndpoint()
 		const requester = createParseRequester({ request })
-		requester.update('milk', ['place'])
+		requester.update('milk', [])
 		await vi.advanceTimersByTimeAsync(150)
 		calls[0].answer()
 		await flush()
-		expect(requester.answerFor('milk', ['place']).title).toBe('MILK')
-		expect(requester.answerFor('milk tomorrow', ['place'])).toBeNull()
-		expect(requester.answerFor('milk', [])).toBeNull()
+		requester.update('milk t', [])
+		await vi.advanceTimersByTimeAsync(150)
+		expect(requester.current.value.title).toBe('MILK')
+		calls[1].answer()
+		await flush()
+		expect(requester.current.value.title).toBe('MILK T')
+	})
+
+	it('forgets its answer when the newest request hangs for a second', async () => {
+		const { request, calls } = fakeEndpoint()
+		const requester = createParseRequester({ request })
+		requester.update('milk', [])
+		await vi.advanceTimersByTimeAsync(150)
+		calls[0].answer()
+		await flush()
+		requester.update('milk t', [])
+		await vi.advanceTimersByTimeAsync(150 + 999)
+		expect(requester.current.value.title).toBe('MILK')
+		await vi.advanceTimersByTimeAsync(1)
+		expect(calls[1].aborted).toBe(true)
+		expect(requester.current.value).toBeNull()
+	})
+
+	it('leaves a request it hands to settle to settle\'s own timeout', async () => {
+		const { request, calls } = fakeEndpoint()
+		const requester = createParseRequester({ request })
+		requester.update('A', [])
+		await vi.advanceTimersByTimeAsync(600)
+		const settled = requester.settle('A', [])
+		await vi.advanceTimersByTimeAsync(700)
+		expect(calls[0].aborted).toBe(false)
+		calls[0].answer()
+		expect((await settled).title).toBe('A')
 	})
 
 	it('forgets an older answer when the newest request fails', async () => {
@@ -92,7 +122,6 @@ describe('createParseRequester', () => {
 		calls[1].fail()
 		await flush()
 		expect(requester.current.value).toBeNull()
-		expect(requester.answerFor('Call Mom Friday', [])).toBeNull()
 	})
 
 	it('settles from a matching current answer without a request', async () => {

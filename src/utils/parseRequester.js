@@ -30,22 +30,25 @@ const keyOf = (text, ignore) => JSON.stringify([text, [...ignore].sort()])
  * Asks the parser about the New task box's text while it is typed, and for the
  * final answer when Enter is pressed.
  *
- * `update` waits for a pause and keeps only the newest answer in `current`;
- * starting a newer request cancels the older one it started. `settle` is
+ * `update` waits for a pause and keeps the newest answer received in
+ * `current`, so pills stay steady while a newer request runs; starting a newer
+ * request cancels the older one it started, and when the newest fails or takes
+ * longer than `timeout`, `current` is cleared. `settle` is
  * for a save: it owns its request, which nothing `update` or `cancel` does
  * can cancel, and resolves null when there is no answer in time.
  *
  * @param {object} options The options
  * @param {Function} [options.request] Sends one request: (body, signal) => Promise<answer>
  * @param {number} [options.delay] The pause to wait for, in milliseconds
- * @return {{update: Function, settle: Function, current: import('vue').Ref, answerFor: Function, cancel: Function}}
+ * @param {number} [options.timeout] How long update waits for an answer, in milliseconds
+ * @return {{update: Function, settle: Function, current: import('vue').Ref, cancel: Function}}
  */
-export function createParseRequester({ request = postParse, delay = 150 } = {}) {
+export function createParseRequester({ request = postParse, delay = 150, timeout = 1000 } = {}) {
 	// The newest answer for the text being typed, and what it answers
 	const current = shallowRef(null)
 	let currentKey = null
 	let timer = null
-	// The request update started last, while it runs: { key, controller, promise }
+	// The request update started last, while it runs: { key, controller, promise, timeoutId }
 	let inFlight = null
 	// Counts updates, so an answer to an older one is dropped
 	let generation = 0
@@ -99,6 +102,8 @@ export function createParseRequester({ request = postParse, delay = 150 } = {}) 
 			timer = null
 			const controller = new AbortController()
 			const entry = { key, controller, promise: send(text, ignore, controller.signal) }
+			// Too slow counts as failed
+			entry.timeoutId = setTimeout(() => controller.abort(), timeout)
 			inFlight = entry
 			entry.promise.then(answer => {
 				if (mine === generation) {
@@ -111,6 +116,7 @@ export function createParseRequester({ request = postParse, delay = 150 } = {}) 
 					forget()
 				}
 			}).finally(() => {
+				clearTimeout(entry.timeoutId)
 				if (inFlight === entry) {
 					inFlight = null
 				}
@@ -131,8 +137,10 @@ export function createParseRequester({ request = postParse, delay = 150 } = {}) 
 		}
 		let controller, promise
 		if (inFlight?.key === key) {
-			// Adopt it: from now on update no longer cancels it
-			({ controller, promise } = inFlight)
+			// Adopt it: from now on update no longer cancels it, nor times it out
+			clearTimeout(inFlight.timeoutId)
+			controller = inFlight.controller
+			promise = inFlight.promise
 			inFlight = null
 		} else {
 			controller = new AbortController()
@@ -158,18 +166,5 @@ export function createParseRequester({ request = postParse, delay = 150 } = {}) 
 		forget()
 	}
 
-	/**
-	 * The current answer, only if it answers this text and ignore list.
-	 * Reactive: it reads current.
-	 *
-	 * @param {string} text The text
-	 * @param {string[]} ignore The kinds dismissed
-	 * @return {object|null} The answer, or null
-	 */
-	const answerFor = (text, ignore = []) => {
-		const answer = current.value
-		return answer && currentKey === keyOf(text, ignore) ? answer : null
-	}
-
-	return { update, settle, current, answerFor, cancel }
+	return { update, settle, current, cancel }
 }

@@ -120,12 +120,14 @@ export default {
 			return this.$store.state.settings.settings.parseNewTasks !== false
 		},
 
-		// The parser's newest answer for the box's text
+		// The parser's newest answer received while typing. It stays up while a
+		// newer request runs, so the pills do not flicker; Enter saves only from
+		// the answer for the final text.
 		answer() {
 			if (!this.parseOn || !this.newTaskName.trim()) {
 				return null
 			}
-			return this.requester.answerFor(this.newTaskName.trim(), this.ignore)
+			return this.requester.current.value
 		},
 
 		shownDate() {

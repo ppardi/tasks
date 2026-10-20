@@ -218,21 +218,69 @@ describe('HeaderBar.vue: the New task box', () => {
 		expect(mounted.created[0].start.toICALString()).toBe(utc(at(21, 14, 30)))
 	})
 
-	it('hides pills from an older answer, and keeps them hidden when the newer request fails', async () => {
+	it('keeps the pills steady while typing, until the next answer arrives', async () => {
 		const mounted = mountHeader()
 		wrapper = mounted.wrapper
 		await mounted.input.setValue('Call the bank tomorrow')
 		await vi.advanceTimersByTimeAsync(150)
 		answer()
 		await flush()
-		expect(wrapper.find('.pill').exists()).toBe(true)
-		await mounted.input.setValue('Call the bank tomorrow x')
-		expect(wrapper.find('.pill').exists()).toBe(false)
+		const pills = () => wrapper.findAll('.pill__text').map(p => p.text())
+		expect(pills()).toEqual(['Tomorrow'])
+		await mounted.input.setValue('Dentist Friday at 3')
+		expect(pills()).toEqual(['Tomorrow'])
 		await vi.advanceTimersByTimeAsync(150)
+		expect(pills()).toEqual(['Tomorrow'])
+		answer(1)
+		await flush()
+		expect(pills()).toEqual(['Fri, 3:00 PM'])
+	})
+
+	it('clears the pills when the newest request fails', async () => {
+		const mounted = mountHeader()
+		wrapper = mounted.wrapper
+		await mounted.input.setValue('Call the bank tomorrow')
+		await vi.advanceTimersByTimeAsync(150)
+		answer()
+		await flush()
+		await mounted.input.setValue('Call the bank tomorrow x')
+		await vi.advanceTimersByTimeAsync(150)
+		expect(wrapper.find('.pill').exists()).toBe(true)
 		posts[1].reject()
 		await flush()
 		expect(wrapper.find('.pill').exists()).toBe(false)
 		expect(wrapper.text()).not.toContain('Saved as')
+	})
+
+	it('clears the pills when the newest request hangs for a second', async () => {
+		const mounted = mountHeader()
+		wrapper = mounted.wrapper
+		await mounted.input.setValue('Call the bank tomorrow')
+		await vi.advanceTimersByTimeAsync(150)
+		answer()
+		await flush()
+		await mounted.input.setValue('Call the bank tomorrow x')
+		await vi.advanceTimersByTimeAsync(150 + 999)
+		expect(wrapper.find('.pill').exists()).toBe(true)
+		await vi.advanceTimersByTimeAsync(1)
+		expect(wrapper.find('.pill').exists()).toBe(false)
+	})
+
+	it('saves from the answer for the final text, not the older one on show', async () => {
+		const mounted = mountHeader()
+		wrapper = mounted.wrapper
+		await mounted.input.setValue('Call the bank tomorrow')
+		await vi.advanceTimersByTimeAsync(150)
+		answer()
+		await flush()
+		await mounted.input.setValue('Dentist Friday at 3')
+		expect(wrapper.findAll('.pill__text').map(p => p.text())).toEqual(['Tomorrow'])
+		await enter(mounted.input)
+		answer(1)
+		await flush()
+		expect(mounted.created).toHaveLength(1)
+		expect(mounted.created[0].summary).toBe('Dentist')
+		expect(mounted.created[0].due.toICALString()).toBe(utc(at(23, 15)))
 	})
 
 	it('opens both of two quick entries in Week, whose route gains its day only when a task opens', async () => {
