@@ -101,6 +101,12 @@ describe('models/task - fill marks', () => {
 		expect(reminderOnly.filledFields).toEqual([])
 	})
 
+	it('reads a list another client escaped', () => {
+		// A client that re-escapes the X- property's text writes DUE\\,LOCATION
+		expect(makeTask(['SUMMARY:x', 'X-NEXTCLOUD-TASKS-ORIGINAL-SUMMARY;VALUE=TEXT:x', 'X-NEXTCLOUD-TASKS-FILLED:DUE\\,LOCATION']).filledFields)
+			.toEqual(['DUE', 'LOCATION'])
+	})
+
 	it('tells an empty original title from none', () => {
 		expect(makeTask(['X-NEXTCLOUD-TASKS-ORIGINAL-SUMMARY;VALUE=TEXT:']).originalSummary).toBe('')
 		expect(makeTask(['SUMMARY:x']).originalSummary).toBeNull()

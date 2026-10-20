@@ -370,7 +370,9 @@ export default class Task {
 	/**
 	 * Reads the marks the server writes when it fills in a task on arrival
 	 * (lib/NaturalLanguage/ArrivalParser.php): the title as received, and the
-	 * list of what it added. The title says VALUE=TEXT, so ical.js unescapes it.
+	 * list of what it added. The title says VALUE=TEXT, so ical.js unescapes it;
+	 * the list may come back escaped (DUE\,LOCATION) from a client that
+	 * re-escapes it, so its backslashes go before it is split.
 	 */
 	_readFill() {
 		const raw = toRaw(this.vtodo)
@@ -379,7 +381,7 @@ export default class Task {
 			: null
 		const filled = raw.getFirstProperty('x-nextcloud-tasks-filled')
 		this._filledFields = filled
-			? filled.getValues().flatMap(value => String(value ?? '').split(','))
+			? filled.getValues().flatMap(value => String(value ?? '').replace(/\\/g, '').split(','))
 				.map(field => field.trim().toUpperCase())
 				.filter(Boolean)
 			: []

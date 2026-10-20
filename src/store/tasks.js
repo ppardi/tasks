@@ -1152,9 +1152,9 @@ const actions = {
 		newTask.created = ICAL.Time.fromJSDate(new Date(), true)
 		newTask.dav = null
 		newTask.conflict = false
-		// Marks the server left when it read the original on arrival; not the copy's
-		newTask.vtodo.removeProperty('x-nextcloud-tasks-original-summary')
-		newTask.vtodo.removeProperty('x-nextcloud-tasks-filled')
+		// Marks the server left when it read the original on arrival; not the
+		// copy's. clearFill() also refreshes what the model read from them.
+		newTask.clearFill()
 
 		// If a parent was provided, link to it. Otherwise, if the original task had
 		// a related parent and that parent exists in the target calendar, keep relation.

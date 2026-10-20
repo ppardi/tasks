@@ -65,4 +65,17 @@ describe('store/tasks - duplicateTask arrival marks', () => {
 		expect(sent[0]).not.toMatch(/FILLED/i)
 		expect(sent[0]).toContain('SUMMARY:Buy milk')
 	})
+
+	it('gives the copy no Undo line, and leaves the source its marks', async () => {
+		const { task } = setup([
+			'X-NEXTCLOUD-TASKS-ORIGINAL-SUMMARY:Buy milk tomorrow',
+			'X-NEXTCLOUD-TASKS-FILLED:DUE',
+		])
+		const copy = await actions.duplicateTask(makeContext(), task)
+		expect(copy).not.toBeNull()
+		expect(copy.originalSummary).toBeNull()
+		expect(copy.filledFields).toEqual([])
+		expect(task.originalSummary).toBe('Buy milk tomorrow')
+		expect(task.filledFields).toEqual(['DUE'])
+	})
 })
