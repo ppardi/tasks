@@ -37,9 +37,16 @@ class Parser {
 	private const WEEKDAY = '(sunday|monday|tuesday|wednesday|thursday|friday|saturday|tues?|thu(?:rs?)?|fri)';
 	/** "on" or "by" in front of a date belongs to it and goes with it. */
 	private const ON = '(?:(?:on|by)\s+)?';
+	/**
+	 * Only "by" in front of today and tomorrow: nobody writes "on tomorrow", so
+	 * an "on" there is a verb's ("Log on tomorrow").
+	 */
+	private const BY = '(?:by\s+)?';
 	/** Not a possessive: "tomorrow's agenda" is no date. The second form is ’ in UTF-8 bytes. */
 	private const NOT_POSSESSIVE = '(?!(?:\'|\xE2\x80\x99)s\b)';
 	private const PART_OF_DAY = '(?:in\s+the\s+|this\s+)?(morning|afternoon|evening)|(tonight)';
+	/** What ends the text before a repeat phrase: "every Monday", "each morning", "every other Friday". */
+	private const REPEAT = '/\b(?:every|each)\s+(?:other\s+)?$/i';
 	/**
 	 * A year after a month and day: after a comma ("August 10, 2012"), or where
 	 * a year can end: the end of the text, punctuation or a time. "Jan 5 2000
@@ -103,7 +110,7 @@ class Parser {
 		$location = null;
 
 		if (!in_array(self::IGNORE_DATE, $ignore, true)) {
-			$date = $this->firstMatch($text, $this->dateRules($today), $taken);
+			$date = $this->firstMatch($text, $this->dateRules($today), $taken, true);
 			if ($date !== null) {
 				$taken[] = [$date['start'], $date['end']];
 			}
@@ -150,7 +157,7 @@ class Parser {
 	 */
 	private function dateRules(DateTimeImmutable $today): array {
 		return [
-			['/\b' . self::ON . '(today|tomorrow)\b' . self::NOT_POSSESSIVE . '/i',
+			['/\b' . self::BY . '(today|tomorrow)\b' . self::NOT_POSSESSIVE . '/i',
 				fn (array $m) => $this->addDays($today, strtolower($m[1]) === 'tomorrow' ? 1 : 0)],
 			// Next week is next Monday
 			['/\bnext\s+week\b' . self::NOT_POSSESSIVE . '/i',
@@ -192,8 +199,8 @@ class Parser {
 				fn (array $m) => $this->clock((int)$m[1], (int)($m[2] ?? 0), stripos($m[3], 'p') === 0 ? 'pm' : 'am', 'meridiem')],
 			['/\b(?:at\s+)?noon\b/i',
 				fn (array $m) => ['hour' => 12, 'minute' => 0, 'meridiem' => null, 'kind' => 'noon']],
-			// at 3, at 19:00; not "at 6.5 kilograms" or "at 3/4"
-			['/\bat\s+(\d{1,2})(?::(\d{2}))?\b(?!\s*[:\/])(?![.,]\d)/i',
+			// at 3, at 19:00, at 4 o'clock; not "at 6.5 kilograms" or "at 3/4"
+			['/\bat\s+(\d{1,2})(?::(\d{2}))?\b(?!\s*[:\/])(?![.,]\d)(?:\s+o(?:\'|\xE2\x80\x99)clock\b)?/i',
 				fn (array $m) => $this->clock((int)$m[1], (int)($m[2] ?? 0), null, 'at')],
 			// A bare number counts only right before a part of the day: "6 in the morning", "11 tonight"
 			['/\b(\d{1,2})(?::(\d{2}))?(?=\s+(?:' . self::PART_OF_DAY . ')\b' . self::NOT_POSSESSIVE . ')/i',
@@ -220,9 +227,13 @@ class Parser {
 	 */
 	private function findTime(string $text, array $taken): ?array {
 		$clock = $this->firstMatch($text, $this->clockRules(), $taken);
+		// "this evening" names today, like "tonight"
 		$part = $this->firstMatch($text, [
-			['/\b(?:' . self::PART_OF_DAY . ')\b' . self::NOT_POSSESSIVE . '/i', fn (array $m) => strtolower($m[1] ?? $m[2])],
-		], $taken);
+			['/\b(?:' . self::PART_OF_DAY . ')\b' . self::NOT_POSSESSIVE . '/i', fn (array $m) => [
+				'part' => strtolower($m[1] ?? $m[2]),
+				'today' => ($m[2] ?? null) !== null || stripos($m[0], 'this') === 0,
+			]],
+		], $taken, true);
 
 		if ($clock !== null && $part !== null) {
 			[$first, $second] = $clock['start'] < $part['start'] ? [$clock, $part] : [$part, $clock];
@@ -245,17 +256,18 @@ class Parser {
 	}
 
 	/**
+	 * @param ?array{part: string, today: bool} $part
 	 * @return array{start: int, end: int, hour: int, minute: int, today: bool}
 	 */
-	private function time(int $start, int $end, ?array $clock, ?string $part): array {
+	private function time(int $start, int $end, ?array $clock, ?array $part): array {
 		if ($clock === null) {
-			$hour = self::PART_HOURS[$part];
+			$hour = self::PART_HOURS[$part['part']];
 			$minute = 0;
 		} else {
-			$hour = $this->hour($clock, $part);
+			$hour = $this->hour($clock, $part['part'] ?? null);
 			$minute = $clock['minute'];
 		}
-		return ['start' => $start, 'end' => $end, 'hour' => $hour, 'minute' => $minute, 'today' => $part === 'tonight'];
+		return ['start' => $start, 'end' => $end, 'hour' => $hour, 'minute' => $minute, 'today' => $part['today'] ?? false];
 	}
 
 	/**
@@ -289,16 +301,19 @@ class Parser {
 	 *
 	 * @param list<array{string, callable(array): mixed}> $rules
 	 * @param list<array{int, int}> $taken
+	 * @param bool $notRepeats Skip a match right after "every"/"each": repeat
+	 *                         phrases are not read ("Water plants every Monday")
 	 * @return ?array{start: int, end: int, value: mixed}
 	 */
-	private function firstMatch(string $text, array $rules, array $taken): ?array {
+	private function firstMatch(string $text, array $rules, array $taken, bool $notRepeats = false): ?array {
 		$best = null;
 		foreach ($rules as [$pattern, $read]) {
 			preg_match_all($pattern, $text, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL);
 			foreach ($matches as $match) {
 				$start = $match[0][1];
 				$end = $start + strlen($match[0][0]);
-				if ($this->overlaps($start, $end, $taken)) {
+				if ($this->overlaps($start, $end, $taken)
+					|| ($notRepeats && preg_match(self::REPEAT, substr($text, 0, $start)) === 1)) {
 					continue;
 				}
 				$value = $read(array_map(static fn (array $group) => $group[0], $match));
@@ -319,7 +334,9 @@ class Parser {
 	 * date or time phrase, punctuation or a stop word, when the words end in a
 	 * place word ("the grocery store"), are a short possessive ("Mom's"), or are
 	 * a capitalized name right after a place word ("the shop at Seville"). More
-	 * than MAX_PLACE_WORDS words is no place.
+	 * than MAX_PLACE_WORDS words is no place. A phrase that runs into another
+	 * "at" leaves the place to that one ("Fill in the form at the bank" → bank;
+	 * "in" is a stop word, so it ends a phrase instead).
 	 *
 	 * The text is split into words once; each "at"/"in" looks at a few of them.
 	 *
@@ -343,10 +360,17 @@ class Parser {
 			$phrase = [];
 			$end = $first;
 			$open = true;
+			$inner = false;
 			for ($i = $next; $i < $count; $i++) {
 				[$word, $offset] = $words[$i];
 				if ($this->inside($offset, $taken) || in_array($this->bare($word), self::STOP_WORDS, true)) {
 					$open = false;
+					break;
+				}
+				if ($this->bare($word) === 'at') {
+					// "Check in at the hotel", "the form at the bank": the
+					// inner "at" decides
+					$inner = true;
 					break;
 				}
 				$trimmed = rtrim($word, '.,;:!?');
@@ -364,7 +388,7 @@ class Parser {
 					break;
 				}
 			}
-			if ($open && $i < $count) {
+			if ($inner || ($open && $i < $count)) {
 				// Still going after MAX_PLACE_WORDS words
 				continue;
 			}
@@ -426,7 +450,8 @@ class Parser {
 		$title = $text;
 		usort($spans, static fn (array $a, array $b) => $b['start'] <=> $a['start']);
 		foreach ($spans as $span) {
-			$title = $this->join(substr($title, 0, $span['start']), substr($title, $span['end']));
+			$removed = substr($text, $span['start'], $span['end'] - $span['start']);
+			$title = $this->join(substr($title, 0, $span['start']), substr($title, $span['end']), $removed);
 		}
 		$title = preg_replace('/^remind\s+me\s+to\s+/i', '', trim($title));
 		if (preg_match('/^[A-Z]/', trim($text)) === 1) {
@@ -438,18 +463,32 @@ class Parser {
 	/**
 	 * Joins the text on either side of a removed phrase, tidying only what the
 	 * removal left at the seam.
+	 *
+	 * @param string $removed The phrase removed between them
 	 */
-	private function join(string $left, string $right): string {
+	private function join(string $left, string $right, string $removed): string {
+		if (preg_match('/([(\[{])\s*$/', $left, $open) === 1
+			&& preg_match('/^\s*' . preg_quote(['(' => ')', '[' => ']', '{' => '}'][$open[1]], '/') . '/', $right, $close) === 1) {
+			// The phrase filled a bracket: "Dentist (tomorrow)" → "Dentist"
+			$left = substr($left, 0, -strlen($open[0]));
+			$right = substr($right, strlen($close[0]));
+		}
 		$edge = '/^[\s[:punct:]]*$/';
 		if (preg_match($edge, $left) === 1) {
 			// The phrase opened the text: "Tomorrow, bring…" → "bring…"
 			return preg_replace('/^\s*(?:[,.;:\x{2013}\x{2014}-]+(?=\s|$))?\s*/u', '', $right);
 		}
 		if (preg_match($edge, $right) === 1) {
-			// The phrase closed the text: drop a dangling separator and "on", "at"
-			// or "by"; keep closing punctuation ("…something in 5 days." → "…something.")
+			// The phrase closed the text: drop a dangling separator, and a dangling
+			// "by" when the phrase brought no preposition of its own ("Finish by
+			// tonight"). Every phrase that takes "on" or "at" carries it, so one
+			// left behind is a verb's ("Log on tomorrow", "Stop by at 6"). Keep
+			// closing punctuation ("…something in 5 days." → "…something.")
 			$left = preg_replace('/(?:[\s,;:\x{2013}\x{2014}]|(?<=\s)-)+$/u', '', $left);
-			$left = rtrim(preg_replace('/\s+(?:on|at|by)$/i', '', $left));
+			if (preg_match('/^(?:on|at|by)\s/i', $removed) !== 1) {
+				$left = preg_replace('/\s+by$/i', '', $left);
+			}
+			$left = rtrim($left);
 			return $left . preg_replace('/^[\s,;:\x{2013}\x{2014}-]+/u', '', $right);
 		}
 		$left = rtrim($left);

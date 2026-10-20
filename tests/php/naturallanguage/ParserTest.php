@@ -118,6 +118,29 @@ class ParserTest extends TestCase {
 			['Book the hall 2 May 2027', 'Book the hall', '2027-05-02', null],
 			// A year only where a year can end: not "Jan 5 2000 units"
 			['Order on Jan 5 2000 units', 'Order 2000 units', '2027-01-05', null],
+			// Final review: a place phrase that runs into another "at" leaves the
+			// place to that "at"
+			['Check in at the hotel', 'Check in at the hotel', null, 'hotel'],
+			['Fill in the form at the bank tomorrow', 'Fill in the form at the bank', '2026-10-22', 'bank'],
+			['Plug in the charger at home', 'Plug in the charger at home', null, 'home'],
+			['Hand in the report at school', 'Hand in the report at school', null, 'school'],
+			['Sign in at the front desk of the clinic', 'Sign in at the front desk of the clinic', null, 'front desk of the clinic'],
+			// Repeat phrases are not read at all
+			['Water plants every Monday', 'Water plants every Monday', null, null],
+			['Stretch each morning', 'Stretch each morning', null, null],
+			['Water plants every other Friday', 'Water plants every other Friday', null, null],
+			// A verb's particle stays when the date or time brought its own preposition
+			['Come by on Friday', 'Come by', '2026-10-23', null],
+			['Sign on at 9', 'Sign on', '2026-10-22 09:00', null],
+			['Log on tomorrow', 'Log on', '2026-10-22', null],
+			['Stop by at 6', 'Stop by', '2026-10-21 18:00', null],
+			// "by" with no preposition of the phrase's own is still the deadline's
+			['Finish the report by tonight', 'Finish the report', '2026-10-21 18:00', null],
+			// Brackets left empty go too; "o'clock" belongs to the time
+			['Dentist (tomorrow)', 'Dentist', '2026-10-22', null],
+			['Meet Sam (tomorrow) at the bank', 'Meet Sam at the bank', '2026-10-22', 'bank'],
+			["A meeting at 4 o'clock", 'A meeting', '2026-10-21 16:00', null],
+			["A meeting at 4 o\u{2019}clock tomorrow", 'A meeting', '2026-10-22 16:00', null],
 		];
 		$named = [];
 		foreach ($rows as $row) {
@@ -169,6 +192,30 @@ class ParserTest extends TestCase {
 		$this->now = new DateTimeImmutable('2026-10-21 23:30', $this->zone);
 		$input = 'Run tomorrow at 9am';
 		$this->assertParsed($this->parse($input), $input, 'Run', '2026-10-22 09:00', null);
+	}
+
+	public function thisPartOfDay(): array {
+		return [
+			'this evening' => ['Call Sam this evening', '2026-10-21 18:00'],
+			'this morning' => ['Call Sam this morning', '2026-10-21 09:00'],
+			'this afternoon at 3' => ['Call Sam this afternoon at 3', '2026-10-21 15:00'],
+		];
+	}
+
+	/**
+	 * "this" names today, like "tonight" and "this Monday": not moved to
+	 * tomorrow once its hour has passed.
+	 *
+	 * @dataProvider thisPartOfDay
+	 */
+	public function testThisPartOfDayIsTodayAfterItsHour(string $input, string $due): void {
+		$this->now = new DateTimeImmutable('2026-10-21 19:30', $this->zone);
+		$this->assertParsed($this->parse($input), $input, 'Call Sam', $due, null);
+	}
+
+	public function testPartOfDayWithoutThisMovesToTomorrowOnceItHasPassed(): void {
+		$this->now = new DateTimeImmutable('2026-10-21 19:30', $this->zone);
+		$this->assertParsed($this->parse('Call Sam in the evening'), 'Call Sam in the evening', 'Call Sam', '2026-10-22 18:00', null);
 	}
 
 	public function testTomorrowAcrossTheEndOfDaylightSaving(): void {

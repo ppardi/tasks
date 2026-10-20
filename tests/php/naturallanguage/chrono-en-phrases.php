@@ -51,8 +51,8 @@ return [
 	['The Deadline is Tomorrow', 'The Deadline is', '2026-10-22', null],
 	['The Deadline is today', 'The Deadline is', '2026-10-21', null],
 	['The Deadline is today 5PM', 'The Deadline is', '2026-10-21 17:00', null],
-	// chrono: this morning; ours: 9 AM has passed, so tomorrow
-	['The Deadline was this morning', 'The Deadline was', '2026-10-22 09:00', null],
+	// "this" names today, as in chrono: 9 AM today, already passed
+	['The Deadline was this morning', 'The Deadline was', '2026-10-21 09:00', null],
 	['Call Sam Tomorrow at noon', 'Call Sam', '2026-10-22 12:00', null],
 	['Call Sam tomorrow morning', 'Call Sam', '2026-10-22 09:00', null],
 	['Call Sam tonight', 'Call Sam', '2026-10-21 18:00', null],
