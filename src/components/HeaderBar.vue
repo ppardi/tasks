@@ -50,6 +50,13 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 					<Plus :size="20" />
 				</template>
 			</NcTextField>
+			<NewTaskPills :due="shownDate && shownDate.due"
+				:all-day="!!shownDate && shownDate.allDay"
+				:place="shownPlace"
+				:title="shownTitle"
+				:return-focus="returnFocusToBox"
+				@dismiss="dismissGuess"
+				@edit="editGuess" />
 		</div>
 		<FilterBar />
 		<CreateMultipleTasksDialog v-if="showCreateMultipleTasksModal"
@@ -64,9 +71,14 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 <script>
 import FilterBar from './FilterBar.vue'
 import FilterDropdown from './FilterDropdown.vue'
+import NewTaskPills from './NewTaskPills.vue'
 import SortorderDropdown from './SortorderDropdown.vue'
 import openNewTask from '../mixins/openNewTask.js'
+import logger from '../utils/logger.js'
+import { taskDataFromEntry } from '../utils/newTaskEntry.js'
+import { createParseRequester } from '../utils/parseRequester.js'
 
+import { showError } from '@nextcloud/dialogs'
 import { translate as t } from '@nextcloud/l10n'
 import moment from '@nextcloud/moment'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
@@ -84,6 +96,7 @@ export default {
 		NcTextField,
 		FilterBar,
 		FilterDropdown,
+		NewTaskPills,
 		SortorderDropdown,
 		Plus,
 	},
@@ -95,9 +108,46 @@ export default {
 			multipleTasks: { numberOfTasks: 0, tasks: {} },
 			additionalTaskProperties: {},
 			compositing: false,
+			// Kinds dismissed for this entry ('date', 'place')
+			ignore: [],
+			// Pills changed for this entry: { date: { due, allDay }, place }
+			overrides: {},
 		}
 	},
 	computed: {
+		parseOn() {
+			return this.$store.state.settings.settings.parseNewTasks !== false
+		},
+
+		// The parser's newest answer for the box's text
+		answer() {
+			if (!this.parseOn || !this.newTaskName.trim()) {
+				return null
+			}
+			return this.requester.current.value
+		},
+
+		shownDate() {
+			if (this.overrides.date) {
+				return this.overrides.date
+			}
+			if (!this.answer?.due || this.ignore.includes('date')) {
+				return null
+			}
+			return { due: this.answer.due, allDay: !!this.answer.allDay }
+		},
+
+		shownPlace() {
+			if (this.overrides.place) {
+				return this.overrides.place
+			}
+			return this.ignore.includes('place') ? null : (this.answer?.location || null)
+		},
+
+		shownTitle() {
+			return this.answer?.title || this.newTaskName.trim()
+		},
+
 		calendar() {
 			return this.getCalendarByRoute(this.$route)
 		},
@@ -157,6 +207,25 @@ export default {
 			}
 		},
 	},
+	watch: {
+		newTaskName(text) {
+			// An emptied box forgets edits and dismissals
+			if (!text.trim()) {
+				this.ignore = []
+				this.overrides = {}
+			}
+			this.requestParse()
+		},
+	},
+	created() {
+		// Not reactive: only its current answer is, and that is a ref
+		this.requester = createParseRequester()
+		// The saves, one after another, so tasks are created in the order entered
+		this.saving = Promise.resolve()
+	},
+	beforeUnmount() {
+		this.requester.cancel()
+	},
 	methods: {
 		...mapActions([
 			'createTask',
@@ -167,6 +236,54 @@ export default {
 		},
 		compositionend() {
 			this.compositing = false
+			this.requestParse()
+		},
+
+		/**
+		 * Asks the parser about the box's text, after a pause. Typing never waits on it.
+		 */
+		requestParse() {
+			if (!this.parseOn || this.compositing || this.showCreateMultipleTasksModal) {
+				return
+			}
+			this.requester.update(this.newTaskName.trim(), this.ignore)
+		},
+
+		/**
+		 * @param {string} kind 'date' or 'place': not a date or place after all
+		 */
+		dismissGuess(kind) {
+			const overrides = { ...this.overrides }
+			delete overrides[kind]
+			this.overrides = overrides
+			if (!this.ignore.includes(kind)) {
+				this.ignore = [...this.ignore, kind]
+			}
+			this.requestParse()
+			this.focusInput()
+		},
+
+		/**
+		 * @param {object} edit { date: { due, allDay } } or { place }
+		 */
+		editGuess(edit) {
+			this.overrides = { ...this.overrides, ...edit }
+		},
+
+		/**
+		 * Where a pill's picker sends focus when it closes: back to the box, the
+		 * caret where it was. Left to the focus trap, the box's whole text would
+		 * be selected, and the next key typed would replace it.
+		 *
+		 * @return {boolean} false: the focus trap has nothing more to do
+		 */
+		returnFocusToBox() {
+			this.focusInput()
+			return false
+		},
+
+		focusInput() {
+			this.$refs.input?.focus()
 		},
 
 		clearNewTask(event) {
@@ -178,22 +295,78 @@ export default {
 			this.newTaskName = ''
 		},
 
-		async addTask() {
-			if (this.compositing) {
+		/**
+		 * Clears the box at once and saves the entry when the parser's answer for
+		 * it is in, at most a second later. The next entry never waits.
+		 *
+		 * @param {Event} [event] The Enter keydown or the button's click
+		 */
+		addTask(event) {
+			// Safari ends the composition before the Enter that confirms it
+			if (this.compositing || event?.isComposing || event?.keyCode === 229) {
+				return
+			}
+			const text = this.newTaskName.trim()
+			if (!text) {
 				return
 			}
 
-			const data = {
-				summary: this.newTaskName,
-				// If the task is created in the calendar view,
-				// we set the current calendar
-				...(this.$route.params.calendarId && { calendar: this.calendar }),
-				...this.getAdditionalTaskProperties(),
-			}
-			const task = await this.createTask(data)
-			await this.openNewTask(task)
+			// Everything as it is now: the route may change while the answer comes
+			const ignore = [...this.ignore]
+			const overrides = { ...this.overrides }
+			const calendar = this.calendar
+			const viewDefaults = this.getAdditionalTaskProperties()
+			const list = this.listOf(this.$route)
+			const answer = this.parseOn ? this.requester.settle(text, ignore) : Promise.resolve(null)
+
 			this.newTaskName = ''
-			this.$refs.input.$refs.inputField.$refs.input.focus()
+			this.ignore = []
+			this.overrides = {}
+			this.focusInput()
+
+			this.saving = this.saving
+				.then(() => answer)
+				.then(answer => this.saveEntry({ text, ignore, overrides, list, data: { ...taskDataFromEntry({ text, answer, overrides, viewDefaults }), calendar } }))
+				.catch(error => logger.error('Could not save the new task', { error }))
+		},
+
+		/**
+		 * @param {object} entry The entry, as it was at Enter
+		 * @param {string} entry.text The text typed, put back if the save fails
+		 * @param {string[]} entry.ignore The kinds dismissed, put back with it
+		 * @param {object} entry.overrides The changed pills, put back with it
+		 * @param {object} entry.data The createTask payload
+		 * @param {string} entry.list The list or collection shown at Enter
+		 */
+		async saveEntry({ text, ignore, overrides, data, list }) {
+			let task
+			try {
+				task = await this.createTask(data)
+				if (!task) {
+					throw new Error('The list is read-only')
+				}
+			} catch (error) {
+				logger.error('Could not create the task', { error })
+				if (this.newTaskName === '') {
+					this.ignore = ignore
+					this.overrides = overrides
+					this.newTaskName = text
+				}
+				showError(t('tasks', 'Could not add the task "{task}".', { task: text }, undefined, { sanitize: false, escape: false }))
+				return
+			}
+			if (this.listOf(this.$route) === list) {
+				await this.openNewTask(task)
+			}
+		},
+
+		/**
+		 * @param {object} route A route
+		 * @return {string} The list or collection it shows
+		 */
+		listOf(route) {
+			const { calendarId, collectionId, collectionParam } = route.params
+			return JSON.stringify([calendarId, collectionId, collectionParam])
 		},
 
 		getAdditionalTaskProperties() {
@@ -222,6 +395,7 @@ export default {
 				return
 			}
 
+			this.requester.cancel()
 			this.multipleTasks = tasksFromText
 			this.showCreateMultipleTasksModal = true
 			this.additionalTaskProperties = this.getAdditionalTaskProperties()
@@ -231,8 +405,9 @@ export default {
 			this.showCreateMultipleTasksModal = false
 			this.multipleTasks = { numberOfTasks: 0, tasks: {} }
 			this.additionalTaskProperties = {}
+			this.requestParse()
 			await this.$nextTick()
-			this.$refs.input.$refs.inputField.$refs.input.focus()
+			this.focusInput()
 		},
 
 		async createMultipleTasksSuccessful() {
@@ -241,7 +416,7 @@ export default {
 			this.additionalTaskProperties = {}
 			this.newTaskName = ''
 			await this.$nextTick()
-			this.$refs.input.$refs.inputField.$refs.input.focus()
+			this.focusInput()
 		},
 	},
 }

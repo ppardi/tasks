@@ -15,11 +15,15 @@
 			<span class="picker__hint">{{ choice.hint }}</span>
 		</button>
 		<div class="picker__separator" />
+		<label v-if="!task" class="picker__check">
+			<input v-model="allDayChoice" type="checkbox">
+			{{ t('tasks', 'All day') }}
+		</label>
 		<form class="picker__custom" @submit.prevent="setCustom">
 			<input v-model="customDate"
 				type="date"
 				:aria-label="t('tasks', 'Due date')">
-			<input v-if="!allDay"
+			<input v-if="!allDayDue"
 				v-model="customTime"
 				type="time"
 				:aria-label="t('tasks', 'Due time')">
@@ -40,6 +44,8 @@
 import { translate as t, getCanonicalLocale } from '@nextcloud/l10n'
 import moment from '@nextcloud/moment'
 
+import { formatLocalDateTime, parseLocalDateTime } from '../../../utils/newTaskEntry.js'
+
 const MORNING = { hours: 9, minutes: 0 }
 
 /**
@@ -48,37 +54,62 @@ const MORNING = { hours: 9, minutes: 0 }
  */
 const isoDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
+/**
+ * Picks a due date for a task, or, without a task, for the New task box: then
+ * it has an All day checkbox, and reports the pick instead of saving it.
+ */
 export default {
 	name: 'DuePicker',
 	props: {
 		task: {
 			type: Object,
-			required: true,
+			default: null,
+		},
+		// Without a task: the due date shown, a zone-less local time
+		due: {
+			type: String,
+			default: null,
+		},
+		// Without a task: whether that date is all day
+		allDay: {
+			type: Boolean,
+			default: false,
 		},
 	},
-	emits: ['done', 'dueChanged'],
+	emits: ['done', 'dueChanged', 'pick', 'dismiss'],
 	data() {
-		const due = this.task.dueMoment.isValid() ? this.task.dueMoment.toDate() : null
-		const time = due && !this.task.allDay ? { hours: due.getHours(), minutes: due.getMinutes() } : MORNING
+		const due = this.task
+			? (this.task.dueMoment.isValid() ? this.task.dueMoment.toDate() : null)
+			: (this.due ? parseLocalDateTime(this.due) : null)
+		const timed = this.task ? !this.task.allDay : !this.allDay
+		const time = due && timed ? { hours: due.getHours(), minutes: due.getMinutes() } : MORNING
 		const date = due || new Date(Date.now() + 24 * 60 * 60 * 1000)
 		return {
 			customDate: isoDate(date),
 			customTime: `${String(time.hours).padStart(2, '0')}:${String(time.minutes).padStart(2, '0')}`,
+			allDayChoice: this.allDay,
 		}
 	},
 	computed: {
 		hasDue() {
-			return this.task.dueMoment.isValid()
+			return this.task ? this.task.dueMoment.isValid() : !!this.due
 		},
 
 		// A due date takes the type of the task's dates (DUE and DTSTART must match);
-		// a task with no dates at all gets a timed one
-		allDay() {
+		// a task with no dates at all gets a timed one. Without a task, the checkbox says.
+		allDayDue() {
+			if (!this.task) {
+				return this.allDayChoice
+			}
 			return (this.hasDue || this.task.startMoment.isValid()) && this.task.allDay
 		},
 
 		// The time the quick choices keep: the current due time, else 9:00 AM
 		time() {
+			if (!this.task) {
+				const due = this.due && !this.allDay ? parseLocalDateTime(this.due) : null
+				return due ? { hours: due.getHours(), minutes: due.getMinutes() } : MORNING
+			}
 			if (this.hasDue && !this.task.allDay) {
 				const due = this.task.dueMoment.toDate()
 				return { hours: due.getHours(), minutes: due.getMinutes() }
@@ -109,7 +140,7 @@ export default {
 		 */
 		setDate(day) {
 			const date = new Date(day.getFullYear(), day.getMonth(), day.getDate())
-			if (!this.allDay) {
+			if (!this.allDayDue) {
 				date.setHours(this.time.hours, this.time.minutes)
 			}
 			return this.save(date)
@@ -121,10 +152,15 @@ export default {
 			}
 			const [year, month, day] = this.customDate.split('-').map(Number)
 			const [hours, minutes] = (this.customTime || '09:00').split(':').map(Number)
-			return this.save(this.allDay ? new Date(year, month - 1, day) : new Date(year, month - 1, day, hours, minutes))
+			return this.save(this.allDayDue ? new Date(year, month - 1, day) : new Date(year, month - 1, day, hours, minutes))
 		},
 
 		clear() {
+			if (!this.task) {
+				this.$emit('dismiss')
+				this.$emit('done')
+				return
+			}
 			return this.save(null)
 		},
 
@@ -132,10 +168,15 @@ export default {
 		 * @param {Date|null} date The new due date
 		 */
 		async save(date) {
+			if (!this.task) {
+				this.$emit('pick', { due: formatLocalDateTime(date, this.allDayDue), allDay: this.allDayDue })
+				this.$emit('done')
+				return
+			}
 			const result = await this.$store.dispatch('setDue', {
 				task: this.task,
 				due: date ? moment(date) : null,
-				allDay: this.allDay,
+				allDay: this.allDayDue,
 			})
 			this.$emit('dueChanged', result)
 			this.$emit('done')
