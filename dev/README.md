@@ -10,7 +10,7 @@ from the release tarball.
 | Script | What it does |
 | --- | --- |
 | `env.sh` | Sourced, not run. Puts a Node 24 on `PATH` when the default `node` is older, since `package.json` requires `^24`. |
-| `server.sh` | A throwaway Nextcloud on `:8091` with this checkout bind-mounted as `custom_apps/tasks`. `--package <tarball>` starts a second one on `:8092` with a release installed instead; `--stop` removes both. |
+| `server.sh` | A throwaway Nextcloud on `:8091` with this checkout bind-mounted as `custom_apps/tasks`. `--package <tarball>` starts a second one on `:8092` with a release installed instead; `--pause` stops all three containers keeping their data and `--resume` brings them back; `--stop` removes them and their data. |
 | `package-release.sh` | Cleans, builds, and packs `dev/out/tasks-<version>.tar.gz` plus its `SHA256SUMS`. |
 | `php-tests.sh` | Runs the fork's PHP unit tests (`tests/php/rollover`) in a throwaway Nextcloud 35 container: no Nextcloud test checkout needed. Installs phpunit into `vendor/` once. |
 | `nl-e2e.sh` | Checks reading new tasks on arrival and the parse endpoint on the `:8092` server, with `lib/` and `appinfo/` copied in: a task PUT like an agent's is filled in; a web-app create, an update, an event, a file upload, the setting off and a user without Tasks are left alone. PASS/FAIL per check; puts the server back on any exit, interrupted too. |

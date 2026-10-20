@@ -8,7 +8,12 @@
 #   dev/server.sh --package dev/out/tasks-<v>.tar.gz
 #                            start a separate one with that tarball installed
 #                            instead of the checkout, on :8092, to prove a release
-#   dev/server.sh --stop     remove both containers and their data
+#   dev/server.sh --pause    stop all three containers, keeping their data
+#   dev/server.sh --resume   start them again where they left off
+#   dev/server.sh --stop     remove all three containers and their data
+#
+# A stopped container is resumed, never recreated: its Nextcloud and database
+# live in volumes attached to it, and a new container would start empty.
 #
 # The dev container bind-mounts this checkout as custom_apps/tasks, so after
 # `npm run build` (or `npm run watch`) a browser reload shows the change. A
@@ -39,13 +44,21 @@ wait_ready() {
   until occ "$name" status > /dev/null 2>&1; do sleep 2; done
 }
 
+running() { docker ps --format '{{.Names}}' | grep -qx "$1"; }
+exists() { docker ps -a --format '{{.Names}}' | grep -qx "$1"; }
+
 start() {
   local name="$1" port="$2"; shift 2
-  if docker ps --format '{{.Names}}' | grep -qx "$name"; then
+  if running "$name"; then
     echo "$name already running on :$port"
     return
   fi
-  docker rm -f "$name" > /dev/null 2>&1 || true
+  if exists "$name"; then
+    docker start "$name" > /dev/null
+    echo "resuming $name on :$port…"
+    wait_ready "$name" "$port"
+    return
+  fi
   docker run -d --name "$name" -p "127.0.0.1:$port:80" \
     -e NEXTCLOUD_ADMIN_USER=admin \
     -e NEXTCLOUD_ADMIN_PASSWORD=admin -e "NEXTCLOUD_TRUSTED_DOMAINS=localhost" \
@@ -59,24 +72,38 @@ start() {
   occ "$name" config:system:set auth.bruteforce.protection.enabled --type=boolean --value=false > /dev/null
 }
 
+start_pkg() {
+  docker network inspect "$PKG_NET" > /dev/null 2>&1 || docker network create "$PKG_NET" > /dev/null
+  if exists "$PKG_DB" && ! running "$PKG_DB"; then
+    docker start "$PKG_DB" > /dev/null
+  elif ! exists "$PKG_DB"; then
+    docker run -d --name "$PKG_DB" --network "$PKG_NET" \
+      -e POSTGRES_DB=nextcloud -e POSTGRES_USER=nextcloud -e POSTGRES_PASSWORD=nextcloud \
+      "$PG_IMAGE" > /dev/null
+  fi
+  until docker exec "$PKG_DB" pg_isready -U nextcloud > /dev/null 2>&1; do sleep 1; done
+  start "$PKG" 8092 --network "$PKG_NET" \
+    -e POSTGRES_HOST="$PKG_DB" -e POSTGRES_DB=nextcloud \
+    -e POSTGRES_USER=nextcloud -e POSTGRES_PASSWORD=nextcloud
+}
+
 case "${1:-}" in
+  --pause)
+    docker stop "$DEV" "$PKG" "$PKG_DB" > /dev/null 2>&1 || true
+    echo "paused $DEV, $PKG, $PKG_DB (data kept; dev/server.sh --resume brings them back)"
+    ;;
+  --resume)
+    exists "$PKG" && start_pkg
+    exists "$DEV" && start "$DEV" 8091
+    echo "http://localhost:8092/index.php/apps/tasks and http://localhost:8091/index.php/apps/tasks  (admin/admin)"
+    ;;
   --stop)
     docker rm -f "$DEV" "$PKG" "$PKG_DB" 2>/dev/null || true
     docker network rm "$PKG_NET" > /dev/null 2>&1 || true
     ;;
   --package)
     TARBALL="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
-    docker network inspect "$PKG_NET" > /dev/null 2>&1 || docker network create "$PKG_NET" > /dev/null
-    if ! docker ps --format '{{.Names}}' | grep -qx "$PKG_DB"; then
-      docker rm -f "$PKG_DB" > /dev/null 2>&1 || true
-      docker run -d --name "$PKG_DB" --network "$PKG_NET" \
-        -e POSTGRES_DB=nextcloud -e POSTGRES_USER=nextcloud -e POSTGRES_PASSWORD=nextcloud \
-        "$PG_IMAGE" > /dev/null
-      until docker exec "$PKG_DB" pg_isready -U nextcloud > /dev/null 2>&1; do sleep 1; done
-    fi
-    start "$PKG" 8092 --network "$PKG_NET" \
-      -e POSTGRES_HOST="$PKG_DB" -e POSTGRES_DB=nextcloud \
-      -e POSTGRES_USER=nextcloud -e POSTGRES_PASSWORD=nextcloud
+    start_pkg
     docker exec "$PKG" rm -rf /var/www/html/custom_apps/tasks
     docker exec -i "$PKG" tar -xz -C /var/www/html/custom_apps < "$TARBALL"
     docker exec "$PKG" chown -R www-data:www-data /var/www/html/custom_apps/tasks
@@ -97,7 +124,7 @@ case "${1:-}" in
     echo "http://localhost:8091/index.php/apps/tasks  (admin/admin)"
     ;;
   *)
-    sed -n '4,17p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '4,22p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac
