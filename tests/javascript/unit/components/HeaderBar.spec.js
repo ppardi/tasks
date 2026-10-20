@@ -233,7 +233,7 @@ describe('HeaderBar.vue: the New task box', () => {
 		expect(pills()).toEqual(['Tomorrow'])
 		answer(1)
 		await flush()
-		expect(pills()).toEqual(['Fri, 3:00 PM'])
+		expect(pills()).toEqual(['Fri, Oct 23, 3:00 PM'])
 	})
 
 	it('clears the pills when the newest request fails', async () => {

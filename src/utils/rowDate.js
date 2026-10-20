@@ -68,6 +68,32 @@ export function shortDateLabel(date, timed, now, locale) {
 }
 
 /**
+ * The date on a pill. A pill confirms a choice, so from the day after tomorrow
+ * it names the day exactly ("Mon, Oct 26"), where the list says just "Mon".
+ *
+ * @param {Date} date The date to label
+ * @param {boolean} timed Whether to append the time of day
+ * @param {Date} now The reference date
+ * @param {string} locale A BCP 47 locale
+ * @return {string} e.g. "Tomorrow", "Mon, Oct 26", "Thu, Apr 15, 2027", each with ", 9:00 AM" when timed
+ */
+export function pillDateLabel(date, timed, now, locale) {
+	if (Math.abs(dayDifference(date, now)) <= 1) {
+		return shortDateLabel(date, timed, now, locale)
+	}
+	const options = { weekday: 'short', month: 'short', day: 'numeric' }
+	if (date.getFullYear() !== now.getFullYear()) {
+		options.year = 'numeric'
+	}
+	const label = new Intl.DateTimeFormat(locale, options).format(date)
+	if (!timed) {
+		return label
+	}
+	const time = new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(date)
+	return t('tasks', '{date}, {time}', { date: label, time })
+}
+
+/**
  * The reminder date to show for a task without a due date: the next reminder
  * still to come, or failing that the most recent one that has passed.
  * Relative reminders are skipped; without a due or start date they have

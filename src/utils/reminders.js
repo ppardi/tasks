@@ -16,7 +16,7 @@ import { toRaw } from 'vue'
 
 import { mapICALAlarmsToAlarmObjects } from '../models/alarm.js'
 import { formatAlarm } from './dateStrings.js'
-import { shortDateLabel } from './rowDate.js'
+import { pillDateLabel } from './rowDate.js'
 
 const MINUTE = 60 * 1000
 const MORNING_HOUR = 9
@@ -133,7 +133,7 @@ export function reminderLabel(alarm, task, { now = new Date(), locale } = {}) {
 		const due = task.dueMoment?.isValid() ? task.dueMoment.toDate() : null
 		const match = reminderChoices(due, task.allDay)
 			.find(choice => Math.floor(choice.at.getTime() / MINUTE) === Math.floor(at.getTime() / MINUTE))
-		return match ? match.label : shortDateLabel(at, true, now, locale)
+		return match ? match.label : pillDateLabel(at, true, now, locale)
 	}
 	const [alarmObject] = mapICALAlarmsToAlarmObjects([alarm])
 	const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone

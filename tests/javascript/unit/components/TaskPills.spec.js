@@ -60,7 +60,7 @@ describe('TaskPills.vue', () => {
 	it('shows due date, each reminder, repeat and each tag, in that order', () => {
 		const task = makeTask([`DUE:${local(at(23, 16))}`, 'CATEGORIES:Bank', ...fixedAlarm(at(23, 16)), ...fixedAlarm(at(22, 8))])
 		const { wrapper } = mountPills(task)
-		expect(pillTexts(wrapper)).toEqual(['Fri, 4:00 PM', 'At due time', 'Tomorrow, 8:00 AM', 'Reminder', 'Repeat', 'Bank', 'Tag'])
+		expect(pillTexts(wrapper)).toEqual(['Fri, Oct 23, 4:00 PM', 'At due time', 'Tomorrow, 8:00 AM', 'Reminder', 'Repeat', 'Bank', 'Tag'])
 	})
 
 	it('names unset pills in gray and hides Repeat without a date', () => {

@@ -83,7 +83,7 @@ its × says "that isn't a date / a place".
 import DuePicker from './AppSidebar/Pills/DuePicker.vue'
 import PillButton from './AppSidebar/Pills/PillButton.vue'
 import { parseLocalDateTime } from '../utils/newTaskEntry.js'
-import { shortDateLabel } from '../utils/rowDate.js'
+import { pillDateLabel } from '../utils/rowDate.js'
 
 import { translate as t, getCanonicalLocale } from '@nextcloud/l10n'
 import NcPopover from '@nextcloud/vue/components/NcPopover'
@@ -147,7 +147,7 @@ export default {
 	},
 	computed: {
 		dueLabel() {
-			return shortDateLabel(parseLocalDateTime(this.due), !this.allDay, new Date(), getCanonicalLocale())
+			return pillDateLabel(parseLocalDateTime(this.due), !this.allDay, new Date(), getCanonicalLocale())
 		},
 
 		hint() {

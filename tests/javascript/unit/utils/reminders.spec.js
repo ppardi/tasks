@@ -117,7 +117,7 @@ describe('utils/reminders reminderLabel', () => {
 	})
 
 	it('shows any other fixed reminder as a date and time', () => {
-		expect(reminderLabel(fixedAlarm(new Date(2026, 9, 12, 9, 0)), timedTask(due), { now, locale })).toBe('Oct 12, 9:00 AM')
+		expect(reminderLabel(fixedAlarm(new Date(2026, 9, 12, 9, 0)), timedTask(due), { now, locale })).toBe('Mon, Oct 12, 9:00 AM')
 	})
 
 	it('describes a reminder measured from the due date in words', () => {

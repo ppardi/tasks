@@ -44,7 +44,7 @@ describe('NewTaskPills.vue', () => {
 	it('shows the date as the panel labels it, then the place', () => {
 		const wrapper = mountPills(milk)
 		expect(pillTexts(wrapper)).toEqual(['Tomorrow, 6:00 PM', 'grocery store'])
-		expect(mountPills({ ...milk, due: '2026-10-23T00:00:00', allDay: true, place: null }).find('.pill__text').text()).toBe('Fri')
+		expect(mountPills({ ...milk, due: '2026-10-23T00:00:00', allDay: true, place: null }).find('.pill__text').text()).toBe('Fri, Oct 23')
 	})
 
 	it('shows nothing when nothing was read', () => {

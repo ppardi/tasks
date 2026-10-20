@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { rowDate, reminderDate, shortDateLabel } from '../../../../src/utils/rowDate.js'
+import { pillDateLabel, rowDate, reminderDate, shortDateLabel } from '../../../../src/utils/rowDate.js'
 
 import ICAL from 'ical.js'
 import { describe, expect, it } from 'vitest'
@@ -47,6 +47,26 @@ const relativeAlarm = () => {
 	alarm.addPropertyWithValue('trigger', ICAL.Duration.fromString('-PT15M'))
 	return alarm
 }
+
+describe('utils/rowDate pillDateLabel', () => {
+	const label = (date, timed = false) => pillDateLabel(date, timed, now, locale)
+
+	it('keeps the words for the days either side of today', () => {
+		expect(label(new Date(2026, 9, 21))).toBe('Today')
+		expect(label(new Date(2026, 9, 22, 8, 0), true)).toBe('Tomorrow, 8:00 AM')
+		expect(label(new Date(2026, 9, 20))).toBe('Yesterday')
+	})
+
+	it('names the exact day from the day after tomorrow, where the list says just "Mon"', () => {
+		expect(label(new Date(2026, 9, 26))).toBe('Mon, Oct 26')
+		expect(label(new Date(2026, 9, 23, 16, 0), true)).toBe('Fri, Oct 23, 4:00 PM')
+		expect(label(new Date(2026, 9, 12))).toBe('Mon, Oct 12')
+	})
+
+	it('adds the year when it is not this year', () => {
+		expect(label(new Date(2027, 3, 15))).toBe('Thu, Apr 15, 2027')
+	})
+})
 
 describe('utils/rowDate shortDateLabel', () => {
 	const label = (date, timed = false) => shortDateLabel(date, timed, now, locale)

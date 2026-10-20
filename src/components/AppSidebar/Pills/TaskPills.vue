@@ -147,7 +147,7 @@ import TagsPicker from './TagsPicker.vue'
 import formatRecurrenceRule from '../../../filters/recurrenceRuleFormat.js'
 import { fixedReminders, reminderLabel } from '../../../utils/reminders.js'
 import { repeatPreset, repeatPresets } from '../../../utils/repeatPresets.js'
-import { rowDate, shortDateLabel } from '../../../utils/rowDate.js'
+import { pillDateLabel, rowDate } from '../../../utils/rowDate.js'
 
 import { showUndo } from '@nextcloud/dialogs'
 import { translate as t, translatePlural as n, getCanonicalLocale } from '@nextcloud/l10n'
@@ -206,7 +206,7 @@ export default {
 			if (!this.due) {
 				return ''
 			}
-			const label = shortDateLabel(this.due, !this.task.allDay, new Date(), getCanonicalLocale())
+			const label = pillDateLabel(this.due, !this.task.allDay, new Date(), getCanonicalLocale())
 			return this.late ? `${label} · ${this.late}` : label
 		},
 

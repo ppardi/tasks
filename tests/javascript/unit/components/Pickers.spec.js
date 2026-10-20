@@ -116,7 +116,7 @@ describe('ReminderPicker.vue', () => {
 	it('shows a reminder that matches no choice as the current one', () => {
 		const task = makeTask([`DUE:${local(at(23, 16))}`, ...fixedAlarm(at(12, 9))])
 		const { wrapper } = mountPicker(ReminderPicker, { task, index: 0 })
-		expect(wrapper.find('.picker__current').text()).toBe('Current: Oct 12, 9:00 AM')
+		expect(wrapper.find('.picker__current').text()).toBe('Current: Mon, Oct 12, 9:00 AM')
 	})
 
 	it('offers the full editor as Custom…', async () => {
