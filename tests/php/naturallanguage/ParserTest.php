@@ -204,6 +204,52 @@ class ParserTest extends TestCase {
 		$this->assertSame($input, $result->title);
 	}
 
+	public function testTextLongerThanTheCapIsNoParse(): void {
+		$input = str_pad('Buy milk at the grocery store tomorrow ', 1001, 'x');
+		$this->assertSame(1001, mb_strlen($input));
+		$result = $this->parse($input);
+		$this->assertFalse($result->found);
+		$this->assertSame(trim($input), $result->title);
+	}
+
+	public function testTextAtTheCapIsParsed(): void {
+		// Counted in characters, not bytes: 1000 of them, most two bytes long
+		$input = 'Buy milk at the grocery store tomorrow ' . str_repeat('é', 1000 - 39);
+		$this->assertSame(1000, mb_strlen($input));
+		$this->assertTrue($this->parse($input)->found);
+	}
+
+	public function testManyAtsAndInsAreQuick(): void {
+		$input = str_repeat('in x ', 20 * 1024);
+		$started = microtime(true);
+		$result = $this->parse($input);
+		$this->assertLessThan(1.0, microtime(true) - $started, 'seconds');
+		$this->assertFalse($result->found);
+	}
+
+	public function placeLengths(): array {
+		return [
+			'eight words: a place' => ['Meet at the very big old red brick community center', 'very big old red brick community center'],
+			'nine words: too long to be sure' => ['Meet at the very big old red brick community health center', null],
+			'a short place after a long run of words' => ['one two three four five six seven eight nine ten at the bank', 'bank'],
+		];
+	}
+
+	/**
+	 * @dataProvider placeLengths
+	 */
+	public function testAPlaceIsAFewWords(string $input, ?string $location): void {
+		$after = count(preg_split('/\s+/', explode(' at ', $input, 2)[1]));
+		$this->assertContains($after, [8, 9, 2], 'words after "at"');
+		$this->assertParsed($this->parse($input), $input, trim($input), null, $location);
+	}
+
+	public function testANameAfterAPlaceWordReadsTheWordJustBefore(): void {
+		// The second "at" follows the place word "cafe"
+		$this->assertParsed($this->parse('Lunch at the cafe at Seville'), 'Lunch at the cafe at Seville', 'Lunch at the cafe at Seville', null, 'Seville');
+		$this->assertParsed($this->parse('Meet by the shop at Seville'), 'Meet by the shop at Seville', 'Meet by the shop at Seville', null, 'Seville');
+	}
+
 	public function testToArray(): void {
 		$this->assertSame([
 			'title' => 'Purchase milk at the grocery store',

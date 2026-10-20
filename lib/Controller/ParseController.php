@@ -49,7 +49,8 @@ class ParseController extends Controller {
 		if (!is_string($text) || !is_array($ignore) || ($tz !== null && !is_string($tz)) || $this->userId === null) {
 			return new JSONResponse(['message' => 'Expected { text: string, tz?: string, ignore?: string[] }'], Http::STATUS_BAD_REQUEST);
 		}
-		$zone = is_string($tz) && in_array($tz, DateTimeZone::listIdentifiers(), true)
+		// With the older aliases browsers still report (Asia/Calcutta, Europe/Kiev)
+		$zone = is_string($tz) && in_array($tz, DateTimeZone::listIdentifiers(DateTimeZone::ALL_WITH_BC), true)
 			? new DateTimeZone($tz)
 			: $this->userZone->for($this->userId);
 		$kinds = array_values(array_intersect([Parser::IGNORE_DATE, Parser::IGNORE_PLACE], array_filter($ignore, 'is_string')));

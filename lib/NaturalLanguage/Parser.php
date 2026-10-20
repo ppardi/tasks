@@ -55,6 +55,14 @@ class Parser {
 		'a' => 1, 'an' => 1, 'one' => 1, 'two' => 2, 'three' => 3, 'four' => 4, 'five' => 5,
 		'six' => 6, 'seven' => 7, 'eight' => 8, 'nine' => 9, 'ten' => 10,
 	];
+	/**
+	 * Longer text is not read at all, in characters: a task title is a line,
+	 * and the scan must stay quick on whatever a client sends.
+	 */
+	public const MAX_LENGTH = 1000;
+	/** The most words after "at"/"in" a place can have; a longer run is no place. */
+	private const MAX_PLACE_WORDS = 8;
+
 	/** The hour a part of the day means on its own. */
 	private const PART_HOURS = ['morning' => 9, 'afternoon' => 14, 'evening' => 18, 'tonight' => 18];
 
@@ -84,7 +92,7 @@ class Parser {
 	 *                             title: 'date' (dates and times), 'place'
 	 */
 	public function parse(string $text, DateTimeImmutable $now, DateTimeZone $zone, array $ignore = []): ParseResult {
-		if (!mb_check_encoding($text, 'UTF-8')) {
+		if (!mb_check_encoding($text, 'UTF-8') || mb_strlen($text) > self::MAX_LENGTH) {
 			return new ParseResult(trim($text));
 		}
 		$now = $now->setTimezone($zone);
@@ -310,35 +318,57 @@ class Parser {
 	 * A place, only when sure: "at" or "in" followed by words, up to the end, a
 	 * date or time phrase, punctuation or a stop word, when the words end in a
 	 * place word ("the grocery store"), are a short possessive ("Mom's"), or are
-	 * a capitalized name right after a place word ("the shop at Seville").
+	 * a capitalized name right after a place word ("the shop at Seville"). More
+	 * than MAX_PLACE_WORDS words is no place.
+	 *
+	 * The text is split into words once; each "at"/"in" looks at a few of them.
 	 *
 	 * @param list<array{int, int}> $taken
 	 */
 	private function findPlace(string $text, array $taken): ?string {
 		preg_match_all('/\b(?:at|in)\s+/i', $text, $starts, PREG_OFFSET_CAPTURE);
+		preg_match_all('/\S+/u', $text, $words, PREG_OFFSET_CAPTURE);
+		$words = $words[0];
+		$count = count($words);
+		$next = 0;
 		foreach ($starts[0] as [$lead, $start]) {
 			if ($this->inside($start, $taken)) {
 				continue;
 			}
 			$first = $start + strlen($lead);
-			preg_match_all('/\S+/u', $text, $words, PREG_OFFSET_CAPTURE, $first);
+			// The starts come in order, so the first word after each only moves on
+			while ($next < $count && $words[$next][1] < $first) {
+				$next++;
+			}
 			$phrase = [];
 			$end = $first;
-			foreach ($words[0] as [$word, $offset]) {
+			$open = true;
+			for ($i = $next; $i < $count; $i++) {
+				[$word, $offset] = $words[$i];
 				if ($this->inside($offset, $taken) || in_array($this->bare($word), self::STOP_WORDS, true)) {
+					$open = false;
 					break;
 				}
 				$trimmed = rtrim($word, '.,;:!?');
 				if ($trimmed === '') {
+					$open = false;
+					break;
+				}
+				if (count($phrase) === self::MAX_PLACE_WORDS) {
 					break;
 				}
 				$phrase[] = $trimmed;
 				$end = $offset + strlen($trimmed);
 				if ($trimmed !== $word) {
+					$open = false;
 					break;
 				}
 			}
-			if ($phrase !== [] && $this->isSurePlace($phrase, substr($text, 0, $start))) {
+			if ($open && $i < $count) {
+				// Still going after MAX_PLACE_WORDS words
+				continue;
+			}
+			if ($phrase !== [] && $this->isSurePlace($phrase, $this->wordBefore($text, $start, $words, $next))) {
 				return preg_replace('/^(?:the|my|a)\s+/i', '', substr($text, $first, $end - $first));
 			}
 		}
@@ -346,10 +376,32 @@ class Parser {
 	}
 
 	/**
-	 * @param non-empty-list<string> $phrase The words after "at"/"in"
-	 * @param string $before The text before "at"/"in"
+	 * The last word before byte offset $start (where "at"/"in" begins), as the
+	 * text up to there would end: a word that runs into "at" ("shop(at") counts
+	 * only up to it.
+	 *
+	 * @param list<array{string, int}> $words Every word of the text, in order
+	 * @param int $after The index of the first word after "at"/"in"
 	 */
-	private function isSurePlace(array $phrase, string $before): bool {
+	private function wordBefore(string $text, int $start, array $words, int $after): string {
+		for ($i = min($after, count($words)) - 1; $i >= 0; $i--) {
+			[$word, $offset] = $words[$i];
+			if ($offset >= $start) {
+				continue;
+			}
+			$part = rtrim(substr($word, 0, $start - $offset));
+			if ($part !== '') {
+				return $part;
+			}
+		}
+		return '';
+	}
+
+	/**
+	 * @param non-empty-list<string> $phrase The words after "at"/"in"
+	 * @param string $previous The word before "at"/"in"
+	 */
+	private function isSurePlace(array $phrase, string $previous): bool {
 		$last = str_replace("\u{2019}", "'", mb_strtolower($phrase[count($phrase) - 1]));
 		$possessive = preg_match("/'s$/", $last) === 1;
 		if (in_array($last, self::PLACE_WORDS, true)
@@ -359,8 +411,7 @@ class Parser {
 		if ($possessive && count($phrase) <= 2) {
 			return true;
 		}
-		$previous = preg_split('/\s+/u', rtrim($before));
-		$previous = preg_replace('/[^a-z]/', '', strtolower((string)end($previous)));
+		$previous = preg_replace('/[^a-z]/', '', strtolower($previous));
 		return in_array($previous, self::PLACE_WORDS, true) && preg_match('/^[A-Z]/', $phrase[0]) === 1;
 	}
 
