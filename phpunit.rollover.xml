@@ -13,5 +13,6 @@
   <testsuite name="Tasks fork">
     <directory>./tests/php/rollover</directory>
     <directory>./tests/php/naturallanguage</directory>
+    <directory>./tests/php/dav</directory>
   </testsuite>
 </phpunit>

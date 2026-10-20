@@ -28,7 +28,8 @@ use Sabre\VObject\Property\ICalendar\DateTime as DateTimeProperty;
  *   completed or cancelled, no DTSTART, no VALARM, and CREATED (else DTSTAMP)
  *   within ten minutes of now. A task moved or imported keeps its old dates.
  * - Without a due date, the title's date, time and place are read: the date
- *   and time words leave the title.
+ *   and time words leave the title, and so does a leading "Remind me to" when
+ *   any of them was found.
  * - With a due date, the sender's date wins: only a place is read, the title
  *   stays, and the automatic reminder is added.
  * - It writes SUMMARY, DUE, LOCATION (only if empty), the automatic reminder
@@ -76,7 +77,9 @@ class ArrivalParser {
 			if (!$result->found) {
 				return false;
 			}
-			$title = $result->due !== null ? $result->title : null;
+			// The parser's title, as the New task box shows it: with a place
+			// alone it differs only by a leading "Remind me to"
+			$title = $result->title !== trim($summary) ? $result->title : null;
 			$due = $result->due;
 			$reminder = $due !== null ? $this->upcoming($this->automaticReminderTime($due, $result->allDay), $now) : null;
 		}

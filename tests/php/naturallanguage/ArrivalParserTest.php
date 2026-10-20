@@ -165,6 +165,19 @@ class ArrivalParserTest extends TestCase {
 		$this->assertSame('LOCATION', (string)$todo->{ArrivalParser::FILLED});
 	}
 
+	public function testRemindMeToGoesWithAPlaceAlone(): void {
+		// As the New task box shows it: "Remind me to" goes when a place was read
+		$input = 'Remind me to stop at the bank';
+		$calendar = $this->task("SUMMARY:$input");
+		$this->assertTrue($this->apply($calendar));
+		$todo = $calendar->VTODO;
+		$this->assertSame('Stop at the bank', (string)$todo->SUMMARY);
+		$this->assertSame('bank', (string)$todo->LOCATION);
+		$this->assertFalse(isset($todo->DUE));
+		$this->assertSame($input, (string)$todo->{ArrivalParser::ORIGINAL_SUMMARY});
+		$this->assertSame('LOCATION', (string)$todo->{ArrivalParser::FILLED});
+	}
+
 	public function testPlaceAlreadyGivenIsNothingToAdd(): void {
 		$this->assertUnchanged($this->task('SUMMARY:Buy stamps at the post office', 'LOCATION:Main St'));
 	}

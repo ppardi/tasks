@@ -90,7 +90,8 @@ class ParseOnArrivalPlugin extends ServerPlugin {
 				// Read once; the body goes on as a string either way
 				$data = (string)stream_get_contents($data);
 			}
-			if (!is_string($data)) {
+			// An event, or anything else that is no task, is not parsed twice
+			if (!is_string($data) || stripos($data, 'BEGIN:VTODO') === false) {
 				return;
 			}
 			$user = $this->userSession->getUser();
