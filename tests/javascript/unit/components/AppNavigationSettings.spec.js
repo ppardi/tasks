@@ -54,3 +54,22 @@ describe('AppNavigationSettings.vue - rollover', () => {
 		expect(saved).toEqual([{ type: 'rollover', value: 0 }])
 	})
 })
+
+describe('AppNavigationSettings.vue - read new tasks', () => {
+	it('is on by default', () => {
+		const { wrapper } = mountSettings({})
+		expect(wrapper.find('.parse-new .switch').element.checked).toBe(true)
+		expect(wrapper.find('.parse-new').text()).toContain('Read dates and places from new tasks')
+	})
+
+	it('shows it off when the user turned it off', () => {
+		const { wrapper } = mountSettings({ parseNewTasks: false })
+		expect(wrapper.find('.parse-new .switch').element.checked).toBe(false)
+	})
+
+	it('saves turning it off as 0', async () => {
+		const { wrapper, saved } = mountSettings({ parseNewTasks: true })
+		await wrapper.find('.parse-new .switch').setValue(false)
+		expect(saved).toEqual([{ type: 'parseNewTasks', value: 0 }])
+	})
+})

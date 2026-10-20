@@ -45,6 +45,13 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 						{{ t('tasks', 'Tasks not done by the end of their day move to the next day, reminders included.') }}
 					</p>
 				</li>
+				<li class="parse-new">
+					<NcCheckboxRadioSwitch type="switch"
+						:model-value="parseNewTasks"
+						@update:model-value="setParseNewTasks">
+						{{ t('tasks', 'Read dates and places from new tasks') }}
+					</NcCheckboxRadioSwitch>
+				</li>
 				<li class="headline">
 					{{ t('tasks', 'Visibility of Smart Collections') }}
 				</li>
@@ -135,6 +142,10 @@ export default {
 		rollover() {
 			return this.$store.state.settings.settings.rollover !== false
 		},
+		// Reading new tasks is on unless the user turned it off
+		parseNewTasks() {
+			return this.$store.state.settings.settings.parseNewTasks !== false
+		},
 		...mapState({
 			collections: state => state.collections.collections,
 		}),
@@ -153,6 +164,11 @@ export default {
 			// Stored as various_rollover: '1' on, '0' off; the nightly job reads it
 			this.$store.dispatch('setSetting', { type: 'rollover', value: on ? 1 : 0 })
 		},
+
+		setParseNewTasks(on) {
+			// Stored as various_parseNewTasks: '1' on, '0' off; the server reads it on arrival
+			this.$store.dispatch('setSetting', { type: 'parseNewTasks', value: on ? 1 : 0 })
+		},
 	},
 }
 </script>
@@ -168,7 +184,8 @@ li {
 	}
 
 	// The switch with its explanation underneath: stacked, as tall as it needs
-	&.rollover {
+	&.rollover,
+	&.parse-new {
 		flex-direction: column;
 		align-items: flex-start;
 		height: auto;

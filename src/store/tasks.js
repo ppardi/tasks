@@ -1037,6 +1037,9 @@ const actions = {
 		if (taskData.note) {
 			task.note = taskData.note
 		}
+		if (taskData.location) {
+			task.location = taskData.location
+		}
 		if (taskData.due) {
 			task.due = taskData.due
 		}
@@ -1114,6 +1117,9 @@ const actions = {
 		newTask.created = ICAL.Time.fromJSDate(new Date(), true)
 		newTask.dav = null
 		newTask.conflict = false
+		// Marks the server left when it read the original on arrival; not the copy's
+		newTask.vtodo.removeProperty('x-nextcloud-tasks-original-summary')
+		newTask.vtodo.removeProperty('x-nextcloud-tasks-filled')
 
 		// If a parent was provided, link to it. Otherwise, if the original task had
 		// a related parent and that parent exists in the target calendar, keep relation.

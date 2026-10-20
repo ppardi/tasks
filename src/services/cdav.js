@@ -35,6 +35,8 @@ function xhrProvider() {
 	const headers = {
 		'X-Requested-With': 'XMLHttpRequest',
 		requesttoken: OC.requestToken,
+		// The server reads tasks that arrive without this header; the web app parses them itself
+		'X-Nextcloud-Tasks-Client': 'web',
 	}
 	const xhr = new XMLHttpRequest()
 	const oldOpen = xhr.open
