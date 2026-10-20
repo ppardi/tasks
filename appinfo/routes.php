@@ -45,5 +45,6 @@ return [
 		['name' => 'collections#setVisibility',	'url' => '/api/v1/collection/{collectionID}/visibility/{visibility}',	'verb' => 'POST'],
 		['name' => 'settings#get',				'url' => '/api/v1/settings',									'verb' => 'GET'],
 		['name' => 'settings#set',				'url' => '/api/v1/settings/{setting}',							'verb' => 'POST'],
+		['name' => 'parse#parse',				'url' => '/api/v1/parse',										'verb' => 'POST'],
 	]
 ];

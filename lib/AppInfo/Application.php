@@ -22,8 +22,10 @@
 
 namespace OCA\Tasks\AppInfo;
 
+use OCA\DAV\Events\SabrePluginAddEvent;
 use OCA\Tasks\Dashboard\TasksWidget;
 use OCA\Tasks\Listeners\BeforeTemplateRenderedListener;
+use OCA\Tasks\Listeners\SabrePluginAddListener;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -45,6 +47,8 @@ class Application extends App implements IBootstrap {
 		$context->registerDashboardWidget(TasksWidget::class);
 
 		$context->registerEventListener(BeforeTemplateRenderedEvent::class, BeforeTemplateRenderedListener::class);
+		// Fills in tasks created by other clients from their title
+		$context->registerEventListener(SabrePluginAddEvent::class, SabrePluginAddListener::class);
 	}
 
 	public function boot(IBootContext $context): void {

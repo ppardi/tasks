@@ -13,6 +13,7 @@ from the release tarball.
 | `server.sh` | A throwaway Nextcloud on `:8091` with this checkout bind-mounted as `custom_apps/tasks`. `--package <tarball>` starts a second one on `:8092` with a release installed instead; `--stop` removes both. |
 | `package-release.sh` | Cleans, builds, and packs `dev/out/tasks-<version>.tar.gz` plus its `SHA256SUMS`. |
 | `php-tests.sh` | Runs the fork's PHP unit tests (`tests/php/rollover`) in a throwaway Nextcloud 35 container: no Nextcloud test checkout needed. Installs phpunit into `vendor/` once. |
+| `nl-e2e.sh` | Checks reading new tasks on arrival and the parse endpoint on the `:8092` server, with `lib/` and `appinfo/` copied in: a task PUT like an agent's is filled in; a web-app create, an update, an event, a file upload, the setting off and a user without Tasks are left alone. PASS/FAIL per check. |
 | `seed.sh` | Fills the dev server with an "Immediate Tasks" list shaped like Paul's: reminder-only tasks, overdue and upcoming dates, priorities, a note, tags, subtasks, a completed task. Dates are relative to today; re-running overwrites. |
 
 ## Daily loop

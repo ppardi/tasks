@@ -72,6 +72,8 @@ class SettingsService {
 		$initialRoute = (string)$this->config->getUserValue($this->userId, $this->appName, 'various_initialRoute', '/collections/all');
 		// On unless turned off; the nightly rollover job reads the same value
 		$rollover = $this->config->getUserValue($this->userId, $this->appName, 'various_rollover', '1') !== '0';
+		// On unless turned off; the server reads the same value for tasks arriving over CalDAV
+		$parseNewTasks = $this->config->getUserValue($this->userId, $this->appName, 'various_parseNewTasks', '1') !== '0';
 
 		$calendarEnabled = $this->appManager->isEnabledForUser('calendar');
 		$defaultInitialView = $this->config->getAppValue('calendar', 'currentView', 'dayGridMonth');
@@ -87,6 +89,7 @@ class SettingsService {
 			'allDay' => $allDay,
 			'initialRoute' => $initialRoute,
 			'rollover' => $rollover,
+			'parseNewTasks' => $parseNewTasks,
 			'calendarEnabled' => $calendarEnabled,
 			'showTasks' => $showTasks,
 			'calendarView' => $calendarView
