@@ -31,13 +31,23 @@ class Parser {
 
 	private const MONTH = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
 	/**
-	 * Full day names, and the short forms that are not everyday words: "sun"
-	 * and "sat" are left out ("sun screen", "sat down").
+	 * Full day names, and the short forms that are not everyday words: "sun",
+	 * "sat", "mon" ("C'mon") and "wed" are left out.
 	 */
-	private const WEEKDAY = '(sunday|monday|tuesday|wednesday|thursday|friday|saturday|mon|tues?|wed|thu(?:rs?)?|fri)';
+	private const WEEKDAY = '(sunday|monday|tuesday|wednesday|thursday|friday|saturday|tues?|thu(?:rs?)?|fri)';
 	/** "on" or "by" in front of a date belongs to it and goes with it. */
 	private const ON = '(?:(?:on|by)\s+)?';
+	/** Not a possessive: "tomorrow's agenda" is no date. The second form is ’ in UTF-8 bytes. */
+	private const NOT_POSSESSIVE = '(?!(?:\'|\xE2\x80\x99)s\b)';
 	private const PART_OF_DAY = '(?:in\s+the\s+|this\s+)?(morning|afternoon|evening)|(tonight)';
+	/**
+	 * A year after a month and day: after a comma ("August 10, 2012"), or where
+	 * a year can end: the end of the text, punctuation or a time. "Jan 5 2000
+	 * units" has no year. Two groups: the comma form, then the other.
+	 */
+	private const YEAR = '(?:,\s*(\d{4})\b|\s+(\d{4})\b(?=\s*$|\s*[^\w\s]|\s+(?:at\s+\d|\d{1,2}(?::\d{2}|\s*[ap]\.?m\b)|noon\b)))?';
+	/** Month words that are also everyday words: "Print 2 May flyers". */
+	private const AMBIGUOUS_MONTHS = ['may', 'mar'];
 
 	private const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 	private const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -74,6 +84,9 @@ class Parser {
 	 *                             title: 'date' (dates and times), 'place'
 	 */
 	public function parse(string $text, DateTimeImmutable $now, DateTimeZone $zone, array $ignore = []): ParseResult {
+		if (!mb_check_encoding($text, 'UTF-8')) {
+			return new ParseResult(trim($text));
+		}
 		$now = $now->setTimezone($zone);
 		$today = $now->setTime(0, 0);
 		$taken = [];
@@ -114,7 +127,7 @@ class Parser {
 				$due = $this->addDays($today, 1)->setTime($time['hour'], $time['minute']);
 			}
 		} elseif ($date !== null) {
-			$due = $date['value'];
+			$due = $date['value']->setTime(0, 0);
 			$allDay = true;
 		}
 
@@ -129,25 +142,31 @@ class Parser {
 	 */
 	private function dateRules(DateTimeImmutable $today): array {
 		return [
-			['/\b' . self::ON . '(today|tomorrow)\b/i',
+			['/\b' . self::ON . '(today|tomorrow)\b' . self::NOT_POSSESSIVE . '/i',
 				fn (array $m) => $this->addDays($today, strtolower($m[1]) === 'tomorrow' ? 1 : 0)],
 			// Next week is next Monday
-			['/\bnext\s+week\b/i',
+			['/\bnext\s+week\b' . self::NOT_POSSESSIVE . '/i',
 				fn (array $m) => $this->addDays($today, (8 - (int)$today->format('w')) % 7 ?: 7)],
 			['/\bin\s+(\d{1,3}|an?|one|two|three|four|five|six|seven|eight|nine|ten)\s+(days?|weeks?)\b/i',
 				fn (array $m) => $this->addDays($today, (self::COUNTS[strtolower($m[1])] ?? (int)$m[1])
 					* (stripos($m[2], 'week') === 0 ? 7 : 1))],
 			// July 3rd, Jul 3 2027, Dec. 21, August 10, 2012
-			['/\b' . self::ON . self::MONTH . '\b\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4})\b)?/i',
-				fn (array $m) => $this->monthDay($today, $this->month($m[1]), (int)$m[2], $m[3])],
-			// 3 July, the 3rd of July, 31st March, 2016
-			['/\b' . self::ON . '(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?' . self::MONTH . '\b(?:,?\s+(\d{4})\b)?/i',
-				fn (array $m) => $this->monthDay($today, $this->month($m[2]), (int)$m[1], $m[3])],
-			// 11/1, 8/10/2012: US month/day
-			['/(?<![\/\d])\b' . self::ON . '(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?\b(?![\/\d])/i',
-				fn (array $m) => $this->monthDay($today, (int)$m[1], (int)$m[2], $m[3])],
-			// Friday, this Monday, next Tuesday
-			['/\b' . self::ON . '(?:(next|this)\s+)?' . self::WEEKDAY . '\b/i',
+			['/\b' . self::ON . self::MONTH . '\b\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b' . self::YEAR . '/i',
+				fn (array $m) => $this->monthDay($today, $this->month($m[1]), (int)$m[2], $m[3] ?? $m[4])],
+			// 3 July, the 3rd of July, 31st March, 2016. "May" and "mar" count only
+			// with something that makes them a date: on/by/the/of, an ordinal or a year
+			['/\b((?:on|by)\s+)?(the\s+)?(\d{1,2})(st|nd|rd|th)?\s+(of\s+)?' . self::MONTH . '\b' . self::YEAR . '/i',
+				fn (array $m) => in_array(strtolower($m[6]), self::AMBIGUOUS_MONTHS, true)
+					&& ($m[1] ?? $m[2] ?? $m[4] ?? $m[5] ?? $m[7] ?? $m[8]) === null
+					? null
+					: $this->monthDay($today, $this->month($m[6]), (int)$m[3], $m[7] ?? $m[8])],
+			// on 11/1, by 11/1, 8/10/2012: US month/day. Bare, "1/2" is as likely a fraction
+			['/(?<![\/\d])\b((?:on|by)\s+)?(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?\b(?![\/\d])/i',
+				fn (array $m) => $m[1] === null && $m[4] === null
+					? null
+					: $this->monthDay($today, (int)$m[2], (int)$m[3], $m[4])],
+			// Friday, this Tuesday, next Tuesday
+			['/\b' . self::ON . '(?:(next|this)\s+)?' . self::WEEKDAY . '\b' . self::NOT_POSSESSIVE . '/i',
 				fn (array $m) => $this->weekday($today, $m[2], $m[1] === null ? null : strtolower($m[1]))],
 		];
 	}
@@ -169,7 +188,7 @@ class Parser {
 			['/\bat\s+(\d{1,2})(?::(\d{2}))?\b(?!\s*[:\/])(?![.,]\d)/i',
 				fn (array $m) => $this->clock((int)$m[1], (int)($m[2] ?? 0), null, 'at')],
 			// A bare number counts only right before a part of the day: "6 in the morning", "11 tonight"
-			['/\b(\d{1,2})(?::(\d{2}))?(?=\s+(?:' . self::PART_OF_DAY . ')\b)/i',
+			['/\b(\d{1,2})(?::(\d{2}))?(?=\s+(?:' . self::PART_OF_DAY . ')\b' . self::NOT_POSSESSIVE . ')/i',
 				fn (array $m) => $this->clock((int)$m[1], (int)($m[2] ?? 0), null, 'bare')],
 		];
 	}
@@ -194,7 +213,7 @@ class Parser {
 	private function findTime(string $text, array $taken): ?array {
 		$clock = $this->firstMatch($text, $this->clockRules(), $taken);
 		$part = $this->firstMatch($text, [
-			['/\b(?:' . self::PART_OF_DAY . ')\b/i', fn (array $m) => strtolower($m[1] ?? $m[2])],
+			['/\b(?:' . self::PART_OF_DAY . ')\b' . self::NOT_POSSESSIVE . '/i', fn (array $m) => strtolower($m[1] ?? $m[2])],
 		], $taken);
 
 		if ($clock !== null && $part !== null) {
@@ -232,8 +251,9 @@ class Parser {
 	}
 
 	/**
-	 * The hour on a 24-hour clock. Without am/pm, a part of the day decides;
-	 * failing that a bare "at 3" means 1–6 PM, 7–11 AM, 12 noon.
+	 * The hour on a 24-hour clock. Without am/pm, a part of the day decides
+	 * (12 in the evening or tonight is midnight: 24, the start of the next
+	 * day); failing that a bare "at 3" means 1–6 PM, 7–11 AM, 12 noon.
 	 */
 	private function hour(array $clock, ?string $part): int {
 		$hour = $clock['hour'];
@@ -247,6 +267,9 @@ class Parser {
 			return $hour === 12 ? 0 : $hour;
 		}
 		if ($part !== null) {
+			if ($hour === 12) {
+				return $part === 'afternoon' ? 12 : 24;
+			}
 			return $hour < 12 ? $hour + 12 : $hour;
 		}
 		return $hour >= 1 && $hour <= 6 ? $hour + 12 : $hour;
@@ -342,9 +365,9 @@ class Parser {
 	}
 
 	/**
-	 * The title: the text without the date and time phrases and what their
-	 * removal leaves dangling, without a leading "Remind me to", capitalized
-	 * if the text was.
+	 * The title: the text without the date and time phrases, without a leading
+	 * "Remind me to", capitalized if the text was. Cleanup happens only where a
+	 * phrase was cut out; the rest of the text stays exactly as typed.
 	 *
 	 * @param list<array{start: int, end: int}> $spans
 	 */
@@ -352,23 +375,40 @@ class Parser {
 		$title = $text;
 		usort($spans, static fn (array $a, array $b) => $b['start'] <=> $a['start']);
 		foreach ($spans as $span) {
-			$title = substr($title, 0, $span['start']) . ' ' . substr($title, $span['end']);
-		}
-		if ($spans !== []) {
-			$title = preg_replace('/\s+(?:on|at|by)\s*$/i', '', $title);
-			$title = preg_replace('/\s{2,}/', ' ', $title);
-			$title = preg_replace('/\s+([,.!?])/', '$1', $title);
-			// "Call Sam, , then lunch" → "Call Sam, then lunch"
-			$title = preg_replace('/([,;:])(?:\s*[,;:])+/', '$1', $title);
-			// What a removed phrase leaves at either end: "Tomorrow at 10am, bring…" → ", bring…"
-			$title = preg_replace('/^[\s,.;:\x{2013}\x{2014}-]+/u', '', $title);
-			$title = preg_replace('/[\s,;:\x{2013}\x{2014}-]+$/u', '', $title);
+			$title = $this->join(substr($title, 0, $span['start']), substr($title, $span['end']));
 		}
 		$title = preg_replace('/^remind\s+me\s+to\s+/i', '', trim($title));
 		if (preg_match('/^[A-Z]/', trim($text)) === 1) {
 			$title = ucfirst($title);
 		}
 		return $title;
+	}
+
+	/**
+	 * Joins the text on either side of a removed phrase, tidying only what the
+	 * removal left at the seam.
+	 */
+	private function join(string $left, string $right): string {
+		$edge = '/^[\s[:punct:]]*$/';
+		if (preg_match($edge, $left) === 1) {
+			// The phrase opened the text: "Tomorrow, bring…" → "bring…"
+			return preg_replace('/^\s*(?:[,.;:\x{2013}\x{2014}-]+(?=\s|$))?\s*/u', '', $right);
+		}
+		if (preg_match($edge, $right) === 1) {
+			// The phrase closed the text: drop a dangling separator and "on", "at"
+			// or "by"; keep closing punctuation ("…something in 5 days." → "…something.")
+			$left = preg_replace('/(?:[\s,;:\x{2013}\x{2014}]|(?<=\s)-)+$/u', '', $left);
+			$left = rtrim(preg_replace('/\s+(?:on|at|by)$/i', '', $left));
+			return $left . preg_replace('/^[\s,;:\x{2013}\x{2014}-]+/u', '', $right);
+		}
+		$left = rtrim($left);
+		$right = ltrim($right);
+		if (preg_match('/[,;:]$/', $left) === 1 && preg_match('/^[,;:]+(?=\s|$)/', $right) === 1) {
+			// "Call Sam, tomorrow, then lunch" → "Call Sam, then lunch"
+			return $left . ' ' . ltrim(preg_replace('/^[,;:]+/', '', $right));
+		}
+		// Punctuation that belonged to the previous word goes back onto it
+		return preg_match('/^[,.!?;:](?=\s|$)/', $right) === 1 ? $left . $right : $left . ' ' . $right;
 	}
 
 	/**

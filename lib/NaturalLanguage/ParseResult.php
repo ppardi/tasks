@@ -43,7 +43,8 @@ final class ParseResult {
 	public function toArray(): array {
 		return [
 			'title' => $this->title,
-			'due' => $this->due?->format('Y-m-d\TH:i:s'),
+			// An all-day date is midnight even where the zone skips midnight
+			'due' => $this->due?->format($this->allDay ? 'Y-m-d\T00:00:00' : 'Y-m-d\TH:i:s'),
 			'allDay' => $this->allDay,
 			'location' => $this->location,
 			'found' => $this->found,

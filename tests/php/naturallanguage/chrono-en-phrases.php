@@ -92,10 +92,11 @@ return [
 	// No 29 February this year or next: not a date
 	['Call Sam 29 February', 'Call Sam 29 February', null, null],
 
-	// en_slash.test.ts (US month/day)
-	['Call Sam 8/10', 'Call Sam', '2027-08-10', null],
+	// en_slash.test.ts (US month/day, read after "on"/"by" or with a year)
+	['Call Sam on 8/10', 'Call Sam', '2027-08-10', null],
 	['The Deadline is 8/10/2012', 'The Deadline is', '2012-08-10', null],
-	['Call Sam 1/8 at 12pm', 'Call Sam', '2027-01-08 12:00', null],
+	// A bare month/day is no date without "on"/"by" or a year; the time is still read
+	['Call Sam 1/8 at 12pm', 'Call Sam 1/8', '2026-10-22 12:00', null],
 	['Call Sam 8/32', 'Call Sam 8/32', null, null],
 
 	// en_time_exp.test.ts

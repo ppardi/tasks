@@ -94,6 +94,30 @@ class ParserTest extends TestCase {
 			// Removal that leaves nothing is no parse
 			['Tomorrow', 'Tomorrow', null, null],
 			['Plan #work trip tomorrow', 'Plan #work trip', '2026-10-22', null],
+			// Review fixes: a bare numeric date needs "on"/"by" or a year
+			['Buy 1/2 gallon of milk', 'Buy 1/2 gallon of milk', null, null],
+			// Cleanup touches only the ends a removed phrase reached
+			['Friday: figure out what to work on', 'Figure out what to work on', '2026-10-23', null],
+			['Tomorrow, decide what to look at', 'Decide what to look at', '2026-10-22', null],
+			['.NET upgrade tomorrow', '.NET upgrade', '2026-10-22', null],
+			['Use the .NET SDK tomorrow', 'Use the .NET SDK', '2026-10-22', null],
+			// A possessive is not a date
+			["Prepare tomorrow's agenda", "Prepare tomorrow's agenda", null, null],
+			["Prepare tomorrow\u{2019}s agenda", "Prepare tomorrow\u{2019}s agenda", null, null],
+			["Review Friday's notes", "Review Friday's notes", null, null],
+			["Review Friday\u{2019}s notes", "Review Friday\u{2019}s notes", null, null],
+			["Read this morning's mail", "Read this morning's mail", null, null],
+			// Short day names that are everyday words are not days
+			["C'mon, finish it", "C'mon, finish it", null, null],
+			['Get wed in June', 'Get wed in June', null, null],
+			// 12 in the evening is midnight, the start of the next day
+			['Call Sam tonight at 12', 'Call Sam', '2026-10-22 00:00', null],
+			// "May" before a month day needs on/by/the/of, an ordinal or a year
+			['Print 2 May flyers', 'Print 2 May flyers', null, null],
+			['Call Sam on 2 May', 'Call Sam', '2027-05-02', null],
+			['Book the hall 2 May 2027', 'Book the hall', '2027-05-02', null],
+			// A year only where a year can end: not "Jan 5 2000 units"
+			['Order on Jan 5 2000 units', 'Order 2000 units', '2027-01-05', null],
 		];
 		$named = [];
 		foreach ($rows as $row) {
@@ -162,6 +186,22 @@ class ParserTest extends TestCase {
 		$this->now = new DateTimeImmutable('2026-10-22 02:00', new DateTimeZone('UTC'));
 		$input = 'Call Mom today';
 		$this->assertParsed($this->parse($input), $input, 'Call Mom', '2026-10-21', null);
+	}
+
+	public function testAllDayToArrayIsMidnightWhereMidnightDoesNotExist(): void {
+		// Santiago skips from midnight to 1 AM on Sunday 6 September 2026
+		$this->zone = new DateTimeZone('America/Santiago');
+		$this->now = new DateTimeImmutable('2026-09-06 12:00', $this->zone);
+		$result = $this->parse('Run today')->toArray();
+		$this->assertSame('2026-09-06T00:00:00', $result['due']);
+		$this->assertTrue($result['allDay']);
+	}
+
+	public function testInvalidUtf8IsNoParse(): void {
+		$input = "Call Mom tomorrow \xC3";
+		$result = $this->parse($input);
+		$this->assertFalse($result->found);
+		$this->assertSame($input, $result->title);
 	}
 
 	public function testToArray(): void {
