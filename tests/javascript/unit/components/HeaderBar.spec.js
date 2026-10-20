@@ -5,18 +5,26 @@
 
 import HeaderBar from '../../../../src/components/HeaderBar.vue'
 import NewTaskPills from '../../../../src/components/NewTaskPills.vue'
+import { taskDataFromEntry } from '../../../../src/utils/newTaskEntry.js'
 
 import axios from '@nextcloud/axios'
 import { showError } from '@nextcloud/dialogs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import ICAL from 'ical.js'
 import { reactive } from 'vue'
 
 vi.mock('@nextcloud/axios', () => ({ default: { post: vi.fn() } }))
 vi.mock('@nextcloud/dialogs', () => ({ showError: vi.fn() }))
+vi.mock('../../../../src/utils/newTaskEntry.js', async (importOriginal) => {
+	const original = await importOriginal()
+	return { ...original, taskDataFromEntry: vi.fn(original.taskDataFromEntry) }
+})
 
 // Wednesday, 21 October 2026, 2:30 PM local
 const at = (d, h = 0, m = 0) => new Date(2026, 9, d, h, m)
+// How the panel stores a timed date: a UTC DATE-TIME
+const utc = date => ICAL.Time.fromJSDate(date, true).toICALString()
 
 const list = { id: 'cal', displayName: 'Immediate Tasks', readOnly: false }
 const other = { id: 'other', displayName: 'Other', readOnly: false }
@@ -40,7 +48,8 @@ let posts
  */
 function mountHeader({ settings = {}, params = { calendarId: 'cal' }, createTask } = {}) {
 	const $route = reactive({ params })
-	const $router = { push: vi.fn(() => Promise.resolve()) }
+	// Opening a task changes the route, as the real router does
+	const $router = { push: vi.fn(({ params }) => { $route.params = { ...params }; return Promise.resolve() }) }
 	const created = []
 	const $store = {
 		state: {
@@ -180,10 +189,77 @@ describe('HeaderBar.vue: the New task box', () => {
 		expect(mounted.created).toHaveLength(0)
 		answer(0)
 		await flush()
-		expect(mounted.created).toEqual([
-			{ summary: 'Call the bank', due: '2026-10-22T00:00:00', allDay: true, calendar: list },
-			{ summary: 'Dentist', due: '2026-10-23T15:00:00', allDay: false, calendar: list },
-		])
+		expect(mounted.created.map(data => data.summary)).toEqual(['Call the bank', 'Dentist'])
+		expect(mounted.created[0]).toEqual({ summary: 'Call the bank', due: '2026-10-22T00:00:00', allDay: true, calendar: list })
+		expect(mounted.created[1].due.toICALString()).toBe(utc(at(23, 15)))
+	})
+
+	it('stores a timed date in UTC, as the panel does, and an all-day date as a date', async () => {
+		const mounted = mountHeader()
+		wrapper = mounted.wrapper
+		await mounted.input.setValue('Dentist Friday at 3')
+		await enter(mounted.input)
+		answer()
+		await flush()
+		const { due, allDay } = mounted.created[0]
+		expect(due).toBeInstanceOf(ICAL.Time)
+		expect(due.toICALString()).toBe(utc(at(23, 15)))
+		expect(due.toICALString()).toMatch(/Z$/)
+		expect(allDay).toBe(false)
+	})
+
+	it('stores Current\'s start "now" in UTC too', async () => {
+		const mounted = mountHeader({ params: { collectionId: 'current' } })
+		wrapper = mounted.wrapper
+		await mounted.input.setValue('Renew passport')
+		await enter(mounted.input)
+		answer()
+		await flush()
+		expect(mounted.created[0].start.toICALString()).toBe(utc(at(21, 14, 30)))
+	})
+
+	it('hides pills from an older answer, and keeps them hidden when the newer request fails', async () => {
+		const mounted = mountHeader()
+		wrapper = mounted.wrapper
+		await mounted.input.setValue('Call the bank tomorrow')
+		await vi.advanceTimersByTimeAsync(150)
+		answer()
+		await flush()
+		expect(wrapper.find('.pill').exists()).toBe(true)
+		await mounted.input.setValue('Call the bank tomorrow x')
+		expect(wrapper.find('.pill').exists()).toBe(false)
+		await vi.advanceTimersByTimeAsync(150)
+		posts[1].reject()
+		await flush()
+		expect(wrapper.find('.pill').exists()).toBe(false)
+		expect(wrapper.text()).not.toContain('Saved as')
+	})
+
+	it('opens both of two quick entries in Week, whose route gains its day only when a task opens', async () => {
+		const mounted = mountHeader({ params: { collectionId: 'week' } })
+		wrapper = mounted.wrapper
+		await mounted.input.setValue('Call the bank tomorrow')
+		await enter(mounted.input)
+		await mounted.input.setValue('Dentist Friday at 3')
+		await enter(mounted.input)
+		answer(0)
+		answer(1)
+		await flush()
+		expect(mounted.$router.push).toHaveBeenCalledTimes(2)
+		expect(mounted.$router.push.mock.calls[1][0].params.taskId).toBe('task-2.ics')
+	})
+
+	it('puts the text back and reports it when building the task fails', async () => {
+		const mounted = mountHeader()
+		wrapper = mounted.wrapper
+		taskDataFromEntry.mockImplementationOnce(() => { throw new Error('bad answer') })
+		await mounted.input.setValue('Call the bank tomorrow')
+		await enter(mounted.input)
+		answer()
+		await flush()
+		expect(mounted.created).toHaveLength(0)
+		expect(mounted.input.element.value).toBe('Call the bank tomorrow')
+		expect(showError).toHaveBeenCalledTimes(1)
 	})
 
 	it('saves the text as typed within a second when the parser does not answer', async () => {

@@ -77,6 +77,7 @@ import openNewTask from '../mixins/openNewTask.js'
 import logger from '../utils/logger.js'
 import { taskDataFromEntry } from '../utils/newTaskEntry.js'
 import { createParseRequester } from '../utils/parseRequester.js'
+import { momentToICALTime } from '../store/storeHelper.js'
 
 import { showError } from '@nextcloud/dialogs'
 import { translate as t } from '@nextcloud/l10n'
@@ -124,7 +125,7 @@ export default {
 			if (!this.parseOn || !this.newTaskName.trim()) {
 				return null
 			}
-			return this.requester.current.value
+			return this.requester.answerFor(this.newTaskName.trim(), this.ignore)
 		},
 
 		shownDate() {
@@ -326,8 +327,32 @@ export default {
 
 			this.saving = this.saving
 				.then(() => answer)
-				.then(answer => this.saveEntry({ text, ignore, overrides, list, data: { ...taskDataFromEntry({ text, answer, overrides, viewDefaults }), calendar } }))
+				.then(answer => this.saveEntry({ text, ignore, overrides, answer, viewDefaults, calendar, list }))
 				.catch(error => logger.error('Could not save the new task', { error }))
+		},
+
+		/**
+		 * The createTask payload for an entry. Timed dates are stored as the panel
+		 * stores them, in UTC; the endpoint's are zone-less local times.
+		 *
+		 * @param {object} entry The entry, as it was at Enter
+		 * @param {string} entry.text The text typed
+		 * @param {?object} entry.answer The parser's answer, or null
+		 * @param {object} entry.overrides The changed pills
+		 * @param {object} entry.viewDefaults What the view adds
+		 * @param {object} entry.calendar The list to save to
+		 * @return {object} The payload
+		 */
+		taskData({ text, answer, overrides, viewDefaults, calendar }) {
+			// Built from zone-less strings first, so its start/due comparison holds
+			const data = { ...taskDataFromEntry({ text, answer, overrides, viewDefaults }), calendar }
+			if (data.due && !data.allDay) {
+				data.due = momentToICALTime(moment(data.due), false)
+			}
+			if (typeof data.start === 'string') {
+				data.start = momentToICALTime(moment(data.start), false)
+			}
+			return data
 		},
 
 		/**
@@ -335,13 +360,15 @@ export default {
 		 * @param {string} entry.text The text typed, put back if the save fails
 		 * @param {string[]} entry.ignore The kinds dismissed, put back with it
 		 * @param {object} entry.overrides The changed pills, put back with it
-		 * @param {object} entry.data The createTask payload
+		 * @param {?object} entry.answer The parser's answer, or null
+		 * @param {object} entry.viewDefaults What the view adds
+		 * @param {object} entry.calendar The list to save to
 		 * @param {string} entry.list The list or collection shown at Enter
 		 */
-		async saveEntry({ text, ignore, overrides, data, list }) {
+		async saveEntry({ text, ignore, overrides, answer, viewDefaults, calendar, list }) {
 			let task
 			try {
-				task = await this.createTask(data)
+				task = await this.createTask(this.taskData({ text, answer, overrides, viewDefaults, calendar }))
 				if (!task) {
 					throw new Error('The list is read-only')
 				}
@@ -356,7 +383,12 @@ export default {
 				return
 			}
 			if (this.listOf(this.$route) === list) {
-				await this.openNewTask(task)
+				try {
+					await this.openNewTask(task)
+				} catch (error) {
+					// The task is saved; only opening it failed
+					logger.error('Could not open the new task', { error })
+				}
 			}
 		},
 
@@ -365,7 +397,9 @@ export default {
 		 * @return {string} The list or collection it shows
 		 */
 		listOf(route) {
-			const { calendarId, collectionId, collectionParam } = route.params
+			const { calendarId, collectionId } = route.params
+			// Week shows day '0' whether or not the route names it; opening a task names it
+			const collectionParam = route.params.collectionParam ?? (collectionId === 'week' ? '0' : undefined)
 			return JSON.stringify([calendarId, collectionId, collectionParam])
 		},
 

@@ -38,7 +38,7 @@ const keyOf = (text, ignore) => JSON.stringify([text, [...ignore].sort()])
  * @param {object} options The options
  * @param {Function} [options.request] Sends one request: (body, signal) => Promise<answer>
  * @param {number} [options.delay] The pause to wait for, in milliseconds
- * @return {{update: Function, settle: Function, current: import('vue').Ref, cancel: Function}}
+ * @return {{update: Function, settle: Function, current: import('vue').Ref, answerFor: Function, cancel: Function}}
  */
 export function createParseRequester({ request = postParse, delay = 150 } = {}) {
 	// The newest answer for the text being typed, and what it answers
@@ -102,10 +102,15 @@ export function createParseRequester({ request = postParse, delay = 150 } = {}) 
 			inFlight = entry
 			entry.promise.then(answer => {
 				if (mine === generation) {
-					current.value = answer
 					currentKey = key
+					current.value = answer
 				}
-			}, () => {}).finally(() => {
+			}, () => {
+				// No answer for the newest text: an older one must not stand in for it
+				if (mine === generation) {
+					forget()
+				}
+			}).finally(() => {
 				if (inFlight === entry) {
 					inFlight = null
 				}
@@ -153,5 +158,18 @@ export function createParseRequester({ request = postParse, delay = 150 } = {}) 
 		forget()
 	}
 
-	return { update, settle, current, cancel }
+	/**
+	 * The current answer, only if it answers this text and ignore list.
+	 * Reactive: it reads current.
+	 *
+	 * @param {string} text The text
+	 * @param {string[]} ignore The kinds dismissed
+	 * @return {object|null} The answer, or null
+	 */
+	const answerFor = (text, ignore = []) => {
+		const answer = current.value
+		return answer && currentKey === keyOf(text, ignore) ? answer : null
+	}
+
+	return { update, settle, current, answerFor, cancel }
 }

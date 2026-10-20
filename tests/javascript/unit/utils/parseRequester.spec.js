@@ -56,15 +56,43 @@ describe('createParseRequester', () => {
 		const requester = createParseRequester({ request })
 		requester.update('milk', [])
 		await vi.advanceTimersByTimeAsync(150)
+		// The answer is already on its way when the newer text arrives, so
+		// aborting the request no longer stops it
+		calls[0].answer()
 		requester.update('milk tomorrow', [])
+		await flush()
+		expect(requester.current.value).toBeNull()
 		await vi.advanceTimersByTimeAsync(150)
-		expect(calls).toHaveLength(2)
 		calls[1].answer()
 		await flush()
 		expect(requester.current.value.title).toBe('MILK TOMORROW')
+	})
+
+	it('says whether its answer is for the given text and ignore list', async () => {
+		const { request, calls } = fakeEndpoint()
+		const requester = createParseRequester({ request })
+		requester.update('milk', ['place'])
+		await vi.advanceTimersByTimeAsync(150)
 		calls[0].answer()
 		await flush()
-		expect(requester.current.value.title).toBe('MILK TOMORROW')
+		expect(requester.answerFor('milk', ['place']).title).toBe('MILK')
+		expect(requester.answerFor('milk tomorrow', ['place'])).toBeNull()
+		expect(requester.answerFor('milk', [])).toBeNull()
+	})
+
+	it('forgets an older answer when the newest request fails', async () => {
+		const { request, calls } = fakeEndpoint()
+		const requester = createParseRequester({ request })
+		requester.update('Call Mom Friday', [])
+		await vi.advanceTimersByTimeAsync(150)
+		calls[0].answer()
+		await flush()
+		requester.update('Call Mom Friday x', [])
+		await vi.advanceTimersByTimeAsync(150)
+		calls[1].fail()
+		await flush()
+		expect(requester.current.value).toBeNull()
+		expect(requester.answerFor('Call Mom Friday', [])).toBeNull()
 	})
 
 	it('settles from a matching current answer without a request', async () => {
