@@ -120,6 +120,11 @@ class ArrivalParserTest extends TestCase {
 		$this->assertCount(1, $todo->select(ArrivalParser::FILLED));
 		$this->assertSame('Pay rent tomorrow', (string)$todo->{ArrivalParser::ORIGINAL_SUMMARY});
 		$this->assertSame('DUE', (string)$todo->{ArrivalParser::FILLED});
+
+		// Only a reminder added: a copied FILLED still goes
+		$calendar = $this->task('SUMMARY:Pay rent', 'DUE:20261023T010000Z', ArrivalParser::FILLED . ':LOCATION');
+		$this->assertTrue($this->apply($calendar));
+		$this->assertFalse(isset($calendar->VTODO->{ArrivalParser::FILLED}));
 	}
 
 	public function testAllDayDateRemindsAtNineInTheMorning(): void {
@@ -184,7 +189,8 @@ class ArrivalParserTest extends TestCase {
 		$this->assertSame('20261023T010000Z', (string)$todo->DUE);
 		$this->assertSame(['20261023T010000Z'], $this->automaticTriggers($calendar));
 		$this->assertFalse(isset($todo->LOCATION));
-		$this->assertSame('', (string)$todo->{ArrivalParser::FILLED});
+		// Only the reminder was added: no FILLED mark
+		$this->assertFalse(isset($todo->{ArrivalParser::FILLED}));
 	}
 
 	public function testAgentMidnightDueRemindsAtNine(): void {
@@ -194,17 +200,20 @@ class ArrivalParserTest extends TestCase {
 		$this->assertSame(['20261023T160000Z'], $this->automaticTriggers($calendar));
 		$this->assertSame('20261023T070000Z', (string)$calendar->VTODO->DUE);
 		$this->assertSame('Pay rent', (string)$calendar->VTODO->{ArrivalParser::ORIGINAL_SUMMARY});
+		$this->assertFalse(isset($calendar->VTODO->{ArrivalParser::FILLED}));
 	}
 
 	public function testDatedArrivalAllDayAndFloatingDues(): void {
 		$calendar = $this->task('SUMMARY:Pay rent', 'DUE;VALUE=DATE:20261023');
 		$this->assertTrue($this->apply($calendar));
 		$this->assertSame(['20261023T160000Z'], $this->automaticTriggers($calendar));
+		$this->assertFalse(isset($calendar->VTODO->{ArrivalParser::FILLED}));
 
 		// Floating is the user's wall clock: 6:00 PM Phoenix
 		$calendar = $this->task('SUMMARY:Pay rent', 'DUE:20261022T180000');
 		$this->assertTrue($this->apply($calendar));
 		$this->assertSame(['20261023T010000Z'], $this->automaticTriggers($calendar));
+		$this->assertFalse(isset($calendar->VTODO->{ArrivalParser::FILLED}));
 	}
 
 	public function testDatedArrivalInAnUnknownZoneGetsNoGuessedReminder(): void {

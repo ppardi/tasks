@@ -116,7 +116,10 @@ class ArrivalParser {
 		$todo->remove(self::ORIGINAL_SUMMARY);
 		$todo->remove(self::FILLED);
 		$todo->add(self::ORIGINAL_SUMMARY, $summary, ['VALUE' => 'TEXT']);
-		$todo->add(self::FILLED, $filled ?: '');
+		// Only the reminder added: no list at all, rather than an empty one
+		if ($filled) {
+			$todo->add(self::FILLED, $filled);
+		}
 	}
 
 	/**
