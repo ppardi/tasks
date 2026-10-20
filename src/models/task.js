@@ -130,6 +130,7 @@ export default class Task {
 		this._pinned = this.vtodo.getFirstPropertyValue('x-pinned') === 'true'
 		this._location = this.vtodo.getFirstPropertyValue('location') || ''
 		this._customUrl = this.vtodo.getFirstPropertyValue('url') || ''
+		this._readFill()
 
 		// Check for RECURRENCE-ID property (this is an exception instance)
 		this._recurrenceId = this.vtodo.getFirstPropertyValue('recurrence-id')
@@ -364,6 +365,68 @@ export default class Task {
 		['x-nextcloud-tasks-original-due', 'x-nextcloud-tasks-original-reminder', 'x-nextcloud-tasks-missed', 'x-nextcloud-tasks-rolled-to']
 			.forEach(name => this.vtodo.removeAllProperties(name))
 		this.updateLastModified()
+	}
+
+	/**
+	 * Reads the marks the server writes when it fills in a task on arrival
+	 * (lib/NaturalLanguage/ArrivalParser.php): the title as received, and the
+	 * list of what it added. The title says VALUE=TEXT, so ical.js unescapes it.
+	 */
+	_readFill() {
+		const raw = toRaw(this.vtodo)
+		this._originalSummary = raw.hasProperty('x-nextcloud-tasks-original-summary')
+			? String(raw.getFirstPropertyValue('x-nextcloud-tasks-original-summary') ?? '')
+			: null
+		const filled = raw.getFirstProperty('x-nextcloud-tasks-filled')
+		this._filledFields = filled
+			? filled.getValues().flatMap(value => String(value ?? '').split(','))
+				.map(field => field.trim().toUpperCase())
+				.filter(Boolean)
+			: []
+	}
+
+	/**
+	 * The title the task arrived with, before the server filled it in; an
+	 * empty string when it arrived without one
+	 *
+	 * @return {string|null} null when the task was not filled in on arrival
+	 */
+	get originalSummary() {
+		return this._originalSummary
+	}
+
+	/**
+	 * What the server filled in on arrival besides the reminder: DUE, LOCATION
+	 *
+	 * @return {string[]}
+	 */
+	get filledFields() {
+		return this._filledFields
+	}
+
+	/**
+	 * Removes the marks of a task filled in on arrival: the parse is accepted
+	 */
+	clearFill() {
+		['x-nextcloud-tasks-original-summary', 'x-nextcloud-tasks-filled']
+			.forEach(name => this.vtodo.removeAllProperties(name))
+		this.updateLastModified()
+		this._readFill()
+	}
+
+	/**
+	 * Puts back the title a task arrived with; none if it arrived without one
+	 *
+	 * @param {string} summary The title
+	 */
+	restoreSummary(summary) {
+		if (summary) {
+			this.summary = summary
+			return
+		}
+		this.vtodo.removeAllProperties('summary')
+		this.updateLastModified()
+		this._summary = ''
 	}
 
 	/**

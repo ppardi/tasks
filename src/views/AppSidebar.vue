@@ -165,6 +165,7 @@ License along with this library. If not, see <http://www.gnu.org/licenses/>.
 					:read-only="readOnly"
 					@edit-reminders="showReminderEditor = true"
 					@edit-repeat="$refs.recurrence.openEditor()" />
+				<FilledLine :task="task" :read-only="readOnly" />
 				<div class="panel-card">
 					<CheckboxItem v-show="showAllDayToggle"
 						id="allDayToggle"
@@ -315,6 +316,7 @@ import TextItem from '../components/AppSidebar/TextItem.vue'
 import NotesItem from '../components/AppSidebar/NotesItem.vue'
 import TaskCheckbox from '../components/TaskCheckbox.vue'
 import TaskPills from '../components/AppSidebar/Pills/TaskPills.vue'
+import FilledLine from '../components/AppSidebar/FilledLine.vue'
 import MoreSection from '../components/AppSidebar/MoreSection.vue'
 import { mapICALAlarmsToAlarmObjects } from '../models/alarm.js'
 import Task from '../models/task.js'
@@ -358,6 +360,7 @@ import { mapGetters, mapActions } from 'vuex'
 export default {
 	components: {
 		TaskPills,
+		FilledLine,
 		MoreSection,
 		NcModal,
 		NcAppSidebar,

@@ -65,6 +65,19 @@ function clearRolloverMarks(context, task) {
 }
 
 /**
+ * A title, due date or place changed by hand accepts what the server filled in
+ * on arrival (docs/NL-DATES-DESIGN.md, "Undo"): its marks, and Undo, go.
+ *
+ * @param {object} context The store context
+ * @param {Task} task The task
+ */
+function clearFillMarks(context, task) {
+	if (task.originalSummary !== null || task.filledFields.length) {
+		context.commit('clearFill', task)
+	}
+}
+
+/**
  * @param {Task} task The task
  * @return {Date|null} Its due date
  */
@@ -578,6 +591,28 @@ const mutations = {
 	 */
 	clearRollover(state, task) {
 		task.clearRollover()
+	},
+
+	/**
+	 * Removes the marks of a task filled in on arrival
+	 *
+	 * @param {object} state The store data
+	 * @param {Task} task The task
+	 */
+	clearFill(state, task) {
+		task.clearFill()
+	},
+
+	/**
+	 * Puts back the title a task arrived with, or removes the title if it had none
+	 *
+	 * @param {object} state The store data
+	 * @param {object} data Destructuring object
+	 * @param {Task} data.task The task
+	 * @param {string} data.summary The title
+	 */
+	restoreSummary(state, { task, summary }) {
+		task.restoreSummary(summary)
 	},
 
 	/**
@@ -1543,6 +1578,9 @@ const actions = {
 	 * @param {Task} task The task to update
 	 */
 	async setSummary(context, { task, summary }) {
+		if (summary !== task.summary) {
+			clearFillMarks(context, task)
+		}
 		context.commit('setSummary', { task, summary })
 		context.dispatch('updateTask', task)
 	},
@@ -1594,6 +1632,7 @@ const actions = {
 		// A reminder-only task's reminder is its date
 		if (!task.dueMoment.isValid()) {
 			clearRolloverMarks(context, task)
+			clearFillMarks(context, task)
 		}
 		context.dispatch('updateTask', task)
 	},
@@ -1609,6 +1648,7 @@ const actions = {
 		// A reminder-only task's reminder is its date
 		if (!task.dueMoment.isValid()) {
 			clearRolloverMarks(context, task)
+			clearFillMarks(context, task)
 		}
 		context.dispatch('updateTask', task)
 	},
@@ -1624,6 +1664,7 @@ const actions = {
 		// A reminder-only task's reminder is its date
 		if (!task.dueMoment.isValid()) {
 			clearRolloverMarks(context, task)
+			clearFillMarks(context, task)
 		}
 		context.dispatch('updateTask', task)
 	},
@@ -1655,6 +1696,7 @@ const actions = {
 			return
 		}
 		context.commit('setLocation', { task, location })
+		clearFillMarks(context, task)
 		context.dispatch('updateTask', task)
 	},
 
@@ -1738,6 +1780,7 @@ const actions = {
 		const before = { oldDue: dueOf(task), oldAllDay: task.allDay }
 		context.commit('setDue', { task, due, allDay })
 		clearRolloverMarks(context, task)
+		clearFillMarks(context, task)
 		const result = applyReminderRule(context, task, before)
 		context.dispatch('updateTask', task)
 		return result
@@ -1769,6 +1812,55 @@ const actions = {
 	},
 
 	/**
+	 * Undoes what the server filled in when the task arrived
+	 * (docs/NL-DATES-DESIGN.md, "Undo"): puts the original title back and
+	 * removes the due date (only if it read one), the place (likewise) and the
+	 * automatic reminder, then the marks. Mutations only: the actions would
+	 * drop the marks halfway and move the reminder with the due date.
+	 *
+	 * @param {object} context The store context
+	 * @param {object} data Destructuring object
+	 * @param {Task} data.task The task
+	 */
+	async undoFill(context, { task }) {
+		if (task.calendar.readOnly || (task.calendar.isSharedWithMe && task.class !== 'PUBLIC')) {
+			return
+		}
+		// Everything is read before anything changes
+		const original = task.originalSummary
+		if (original === null) {
+			return
+		}
+		const filled = task.filledFields
+		const due = dueOf(task)
+		let reminders = task.alarms
+			.map((alarm, index) => ({ alarm, index }))
+			.filter(({ alarm }) => alarm.hasProperty('x-nextcloud-tasks-automatic'))
+			.map(({ index }) => index)
+		// Another app may have dropped the tag: the automatic reminder sits at
+		// the time the rule gives for the due date
+		if (!reminders.length && due) {
+			reminders = fixedReminders(task.alarms)
+				.filter(reminder => isAutomaticReminder(reminder.at, due, task.allDay))
+				.map(reminder => reminder.index)
+		}
+
+		context.commit('restoreSummary', { task, summary: original })
+		if (reminders.length) {
+			context.commit('removeAlarm', { task, indexes: reminders })
+		}
+		if (filled.includes('DUE')) {
+			context.commit('setDue', { task, due: null })
+			clearRolloverMarks(context, task)
+		}
+		if (filled.includes('LOCATION')) {
+			context.commit('setLocation', { task, location: null })
+		}
+		context.commit('clearFill', task)
+		await context.dispatch('updateTask', task)
+	},
+
+	/**
 	 * Sets the start date of a task
 	 *
 	 * @param {object} context The store context
@@ -1780,6 +1872,7 @@ const actions = {
 		context.commit('setStart', { task, start, allDay })
 		if (dueOf(task)?.getTime() !== before.oldDue?.getTime()) {
 			clearRolloverMarks(context, task)
+			clearFillMarks(context, task)
 		}
 		applyReminderRule(context, task, before)
 		context.dispatch('updateTask', task)
@@ -1820,6 +1913,7 @@ const actions = {
 				const newStart = task.startMoment.year(day.year()).month(day.month()).date(day.date())
 				context.commit('setStart', { task, start: newStart })
 				clearRolloverMarks(context, task)
+				clearFillMarks(context, task)
 				context.dispatch('updateTask', task)
 			}
 		// Adjust due date if start is not set but due is
@@ -1830,6 +1924,7 @@ const actions = {
 				const newDue = task.dueMoment.year(day.year()).month(day.month()).date(day.date())
 				context.commit('setDue', { task, due: newDue })
 				clearRolloverMarks(context, task)
+				clearFillMarks(context, task)
 				applyReminderRule(context, task, before)
 				context.dispatch('updateTask', task)
 			}
@@ -1857,6 +1952,7 @@ const actions = {
 		}
 		const before = { oldDue: dueOf(task), oldAllDay: task.allDay }
 		context.commit('toggleAllDay', task)
+		clearFillMarks(context, task)
 		if (!task.allDay) {
 			// A date that gains a time gets 9:00 AM, not midnight
 			if (task.startMoment.isValid()) {
@@ -1989,6 +2085,8 @@ const actions = {
 			isUnsupported: false,
 		}
 		task._hasMultipleRRules = false
+		// A repeating task offers no Undo: a fixed reminder would fire once
+		clearFillMarks(context, task)
 
 		await context.dispatch('updateTask', task)
 	},
@@ -2210,6 +2308,7 @@ const actions = {
 				}
 				// Done: the missed count starts over
 				clearRolloverMarks(context, freshTask)
+				clearFillMarks(context, freshTask)
 				// The reminders belong to the occurrence: every fixed one moves by as much
 				// as the due date did. (Reminders measured from a date follow by themselves.)
 				shiftFixedReminders(context, freshTask, beforeNext.oldDue)
