@@ -30,6 +30,8 @@ FILE=$HOST/remote.php/dav/files/admin/nl-e2e.txt
 HDRS=$(mktemp)
 FAILS=0
 SETUP=0
+# Set from the moment the deploy turns Tasks off, before SETUP is
+TASKS_OFF=0
 
 occ() { docker exec -u www-data "$C" php occ "$@"; }
 pass() { echo "PASS  $1"; }
@@ -79,6 +81,7 @@ initial_state() { # the page's parseNewTasks initial state, decoded
 
 restore() {
 	rm -f "$HDRS"
+	if [ "$TASKS_OFF" = 1 ]; then occ app:enable tasks > /dev/null; TASKS_OFF=0; fi
 	[ "$SETUP" = 1 ] || return 0
 	echo "== restore"
 	occ app:enable tasks > /dev/null
@@ -111,7 +114,9 @@ docker exec "$C" rm -rf /var/www/html/custom_apps/tasks/lib /var/www/html/custom
 docker cp "$REPO/lib" "$C":/var/www/html/custom_apps/tasks/lib
 docker cp "$REPO/appinfo" "$C":/var/www/html/custom_apps/tasks/appinfo
 docker exec "$C" chown -R www-data:www-data /var/www/html/custom_apps/tasks
+TASKS_OFF=1
 occ app:disable tasks > /dev/null; occ app:enable tasks > /dev/null
+TASKS_OFF=0
 occ upgrade > /dev/null 2>&1 || true
 # Apache's APCu holds the routes for an hour, keyed by version: a new route
 # needs a fresh cache
