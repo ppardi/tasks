@@ -129,6 +129,18 @@ class ParserTest extends TestCase {
 			['Water plants every Monday', 'Water plants every Monday', null, null],
 			['Stretch each morning', 'Stretch each morning', null, null],
 			['Water plants every other Friday', 'Water plants every other Friday', null, null],
+			// A repeat phrase anywhere means no date or time is read; a place still is
+			['Stretch each morning at 7', 'Stretch each morning at 7', null, null],
+			['Call Mom every evening at 6', 'Call Mom every evening at 6', null, null],
+			['Run every day at 7', 'Run every day at 7', null, null],
+			['Water plants every Monday and Friday', 'Water plants every Monday and Friday', null, null],
+			['Pay rent every month on the 1st', 'Pay rent every month on the 1st', null, null],
+			['Take out the trash weekly on Tuesday', 'Take out the trash weekly on Tuesday', null, null],
+			['Renew passport every year on April 15', 'Renew passport every year on April 15', null, null],
+			['Pick up meds every Tuesday at the pharmacy', 'Pick up meds every Tuesday at the pharmacy', null, 'pharmacy'],
+			['Pay $5 each Friday', 'Pay $5 each Friday', null, null],
+			// "each" before a date that is no repeat is no repeat phrase
+			['Bring 2 each tomorrow', 'Bring 2 each', '2026-10-22', null],
 			// A verb's particle stays when the date or time brought its own preposition
 			['Come by on Friday', 'Come by', '2026-10-23', null],
 			['Sign on at 9', 'Sign on', '2026-10-22 09:00', null],

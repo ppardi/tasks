@@ -22,6 +22,8 @@ use DateTimeZone;
  * - A place ("at the grocery store", "at Mom's") is read only when sure, and
  *   its words stay in the title.
  * - "Remind me to" at the start goes, but only when something else was read.
+ * - Repeats are not read: with a repeat phrase anywhere ("every Monday",
+ *   "weekly") no date or time is read at all; a place still is.
  *
  * Positions in the text are byte offsets; they never leave this class.
  */
@@ -45,8 +47,19 @@ class Parser {
 	/** Not a possessive: "tomorrow's agenda" is no date. The second form is ’ in UTF-8 bytes. */
 	private const NOT_POSSESSIVE = '(?!(?:\'|\xE2\x80\x99)s\b)';
 	private const PART_OF_DAY = '(?:in\s+the\s+|this\s+)?(morning|afternoon|evening)|(tonight)';
-	/** What ends the text before a repeat phrase: "every Monday", "each morning", "every other Friday". */
-	private const REPEAT = '/\b(?:every|each)\s+(?:other\s+)?$/i';
+	/**
+	 * A repeat phrase: "every Monday", "each morning", "every other week",
+	 * "every 2 weeks", "every July 4", "weekly". Repeats are not read, so text
+	 * with one anywhere gets no date or time ("Run every day at 7" is no
+	 * one-off at 7). "each" before a date that is no repeat ("Bring 2 each
+	 * tomorrow") is none. A bare "May" is left out ("each may bring one").
+	 */
+	private const REPEAT = '/\b(?:(?:daily|weekly|monthly|yearly|annually'
+		. '|every\s+(?:\d{1,3}|two|three|four|five|six|seven|eight|nine|ten)\s+(?:days|weeks|months|years)'
+		. '|(?:every|each)\s+(?:other\s+)?(?:(?:day|night|week|month|year|weekday|weekend|morning|afternoon|evening'
+		. '|sunday|monday|tuesday|wednesday|thursday|friday|saturday|tues?|thu(?:rs?)?|fri)s?'
+		. '|january|february|march|april|june|july|august|september|october|november|december))\b'
+		. '|(?:every|each)\s+(?:other\s+)?(?:' . self::MONTH . '\.?\s+\d|\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?' . self::MONTH . '\b))/i';
 	/**
 	 * A year after a month and day: after a comma ("August 10, 2012"), or where
 	 * a year can end: the end of the text, punctuation or a time. "Jan 5 2000
@@ -102,6 +115,9 @@ class Parser {
 		if (!mb_check_encoding($text, 'UTF-8') || mb_strlen($text) > self::MAX_LENGTH) {
 			return new ParseResult(trim($text));
 		}
+		if (preg_match(self::REPEAT, $text) === 1) {
+			$ignore[] = self::IGNORE_DATE;
+		}
 		$now = $now->setTimezone($zone);
 		$today = $now->setTime(0, 0);
 		$taken = [];
@@ -110,7 +126,7 @@ class Parser {
 		$location = null;
 
 		if (!in_array(self::IGNORE_DATE, $ignore, true)) {
-			$date = $this->firstMatch($text, $this->dateRules($today), $taken, true);
+			$date = $this->firstMatch($text, $this->dateRules($today), $taken);
 			if ($date !== null) {
 				$taken[] = [$date['start'], $date['end']];
 			}
@@ -233,7 +249,7 @@ class Parser {
 				'part' => strtolower($m[1] ?? $m[2]),
 				'today' => ($m[2] ?? null) !== null || stripos($m[0], 'this') === 0,
 			]],
-		], $taken, true);
+		], $taken);
 
 		if ($clock !== null && $part !== null) {
 			[$first, $second] = $clock['start'] < $part['start'] ? [$clock, $part] : [$part, $clock];
@@ -301,19 +317,16 @@ class Parser {
 	 *
 	 * @param list<array{string, callable(array): mixed}> $rules
 	 * @param list<array{int, int}> $taken
-	 * @param bool $notRepeats Skip a match right after "every"/"each": repeat
-	 *                         phrases are not read ("Water plants every Monday")
 	 * @return ?array{start: int, end: int, value: mixed}
 	 */
-	private function firstMatch(string $text, array $rules, array $taken, bool $notRepeats = false): ?array {
+	private function firstMatch(string $text, array $rules, array $taken): ?array {
 		$best = null;
 		foreach ($rules as [$pattern, $read]) {
 			preg_match_all($pattern, $text, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL);
 			foreach ($matches as $match) {
 				$start = $match[0][1];
 				$end = $start + strlen($match[0][0]);
-				if ($this->overlaps($start, $end, $taken)
-					|| ($notRepeats && preg_match(self::REPEAT, substr($text, 0, $start)) === 1)) {
+				if ($this->overlaps($start, $end, $taken)) {
 					continue;
 				}
 				$value = $read(array_map(static fn (array $group) => $group[0], $match));
