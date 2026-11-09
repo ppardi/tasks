@@ -1,0 +1,28 @@
+# Everything not needed at runtime. The release keeps only:
+# appinfo css img js l10n lib templates CHANGELOG.md LICENSE
+/.codecov.yml
+/.editorconfig
+/.eslintrc.cjs
+/.gitattributes
+/.gitignore
+/.nextcloudignore
+/.php-cs-fixer.dist.php
+/.prettierrc.js
+/.stylelintignore
+/.tx
+/Makefile
+/README.md
+/babel.config.cjs
+/build.xml
+/composer.json
+/composer.lock
+/dev
+/package-lock.json
+/package.json
+/phpunit.integration.xml
+/phpunit.rollover.xml
+/phpunit.xml
+/screenshots
+/stylelint.config.js
+/vendor
+/vite.config.mjs
